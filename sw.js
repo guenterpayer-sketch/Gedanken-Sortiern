@@ -6,7 +6,7 @@ const ASSETS_TO_CACHE = [
   './style.css',
   './app.js',
   './manifest.json',
-  './icon-192x192.png'
+  './pic/icon-192x192.png'
 ];
 
 // Installation: Cache alle statischen Ressourcen
