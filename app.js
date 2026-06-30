@@ -1,13 +1,21 @@
 // --- Globale Variablen ---
 let allThoughts = [];
 let currentCategory = null;
+const QUEUE_KEY = 'gedanken_offline_queue';
 
 // --- DOM-Elemente ---
 const thoughtInput = document.getElementById('thoughtInput');
+const reminderInput = document.getElementById('reminderInput');
 const addThoughtBtn = document.getElementById('addThoughtBtn');
 const speechBtn = document.getElementById('speechBtn');
 const thoughtList = document.getElementById('thoughtList');
 const categoryList = document.getElementById('categoryList');
+const darkModeBtn = document.getElementById('darkModeBtn');
+const offlineBanner = document.getElementById('offlineBanner');
+const reminderBanner = document.getElementById('reminderBanner');
+const weeklySummaryBtn = document.getElementById('weeklySummaryBtn');
+const findPatternsBtn = document.getElementById('findPatternsBtn');
+const mistralInsight = document.getElementById('mistralInsight');
 
 // --- Emotion: Emoji-Mapping ---
 const emotionEmoji = {
@@ -37,7 +45,136 @@ function priorityClass(priority) {
     return 'priority-medium';
 }
 
-// --- Spracherkennung ---
+// --- HTML escapen (gegen XSS in Gedankentexten) ---
+function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str ?? '';
+    return div.innerHTML;
+}
+
+// =====================================================
+// Dark Mode
+// =====================================================
+function applyDarkMode(enabled) {
+    document.body.classList.toggle('dark-mode', enabled);
+    darkModeBtn.textContent = enabled ? '☀️' : '🌙';
+    localStorage.setItem('darkMode', enabled ? '1' : '0');
+}
+
+darkModeBtn.addEventListener('click', () => {
+    applyDarkMode(!document.body.classList.contains('dark-mode'));
+});
+
+applyDarkMode(localStorage.getItem('darkMode') === '1');
+
+// =====================================================
+// Offline-Warteschlange
+// =====================================================
+function getQueue() {
+    try {
+        return JSON.parse(localStorage.getItem(QUEUE_KEY)) || [];
+    } catch {
+        return [];
+    }
+}
+
+function saveQueue(queue) {
+    localStorage.setItem(QUEUE_KEY, JSON.stringify(queue));
+}
+
+function queueThought(text, reminderAt) {
+    const queue = getQueue();
+    queue.push({ tempId: 'pending-' + Date.now() + '-' + Math.random(), text, reminder_at: reminderAt || null });
+    saveQueue(queue);
+    renderQueuedThoughts();
+}
+
+function renderQueuedThoughts() {
+    const queue = getQueue();
+    const existing = thoughtList.querySelectorAll('.thought.pending');
+    existing.forEach(el => el.remove());
+
+    queue.forEach(item => {
+        const div = document.createElement('div');
+        div.className = 'thought pending';
+        div.innerHTML = `
+            <div class="thought-header">
+                <span class="thought-category">⏳ Wartet auf Verbindung...</span>
+            </div>
+            <div class="thought-text">${escapeHtml(item.text)}</div>
+        `;
+        thoughtList.prepend(div);
+    });
+}
+
+async function syncQueue() {
+    const queue = getQueue();
+    if (!queue.length || !navigator.onLine) return;
+
+    const remaining = [...queue];
+    while (remaining.length) {
+        const item = remaining[0];
+        try {
+            const response = await fetch('api.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text: item.text, reminder_at: item.reminder_at })
+            });
+            const data = await response.json();
+            if (data.error) throw new Error(data.error);
+
+            allThoughts.unshift(data);
+            remaining.shift();
+            saveQueue(remaining);
+        } catch (e) {
+            break; // Noch offline oder Serverfehler — Rest bleibt in der Warteschlange
+        }
+    }
+    renderThoughts(currentCategory);
+    renderQueuedThoughts();
+    updateCategories();
+}
+
+function updateOfflineBanner() {
+    offlineBanner.hidden = navigator.onLine;
+}
+
+window.addEventListener('online', () => {
+    updateOfflineBanner();
+    syncQueue();
+});
+window.addEventListener('offline', updateOfflineBanner);
+
+// =====================================================
+// Erinnerungen
+// =====================================================
+async function checkDueReminders() {
+    if (!navigator.onLine) return;
+    try {
+        const response = await fetch('api.php?action=getDueReminders');
+        const due = await response.json();
+        if (!Array.isArray(due) || !due.length) return;
+
+        due.forEach(t => {
+            if (Notification.permission === 'granted') {
+                new Notification('Erinnerung an deinen Gedanken', { body: t.text });
+            }
+        });
+
+        reminderBanner.hidden = false;
+        reminderBanner.innerHTML = `🔔 Erinnerung: ${due.map(t => `„${escapeHtml(t.text)}"`).join(', ')}`;
+    } catch (e) {
+        // still silently
+    }
+}
+
+if ('Notification' in window && Notification.permission === 'default') {
+    Notification.requestPermission();
+}
+
+// =====================================================
+// Spracherkennung
+// =====================================================
 speechBtn.addEventListener('click', () => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) {
@@ -64,10 +201,20 @@ speechBtn.addEventListener('click', () => {
     recognition.start();
 });
 
-// --- Gedanken hinzufügen ---
+// =====================================================
+// Gedanken hinzufügen
+// =====================================================
 addThoughtBtn.addEventListener('click', async () => {
     const text = thoughtInput.value.trim();
     if (!text) return;
+    const reminderAt = reminderInput.value || null;
+
+    if (!navigator.onLine) {
+        queueThought(text, reminderAt);
+        thoughtInput.value = '';
+        reminderInput.value = '';
+        return;
+    }
 
     addThoughtBtn.textContent = '⏳ Analysiere...';
     addThoughtBtn.disabled = true;
@@ -77,7 +224,7 @@ addThoughtBtn.addEventListener('click', async () => {
         const response = await fetch('api.php', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text })
+            body: JSON.stringify({ text, reminder_at: reminderAt })
         });
         const data = await response.json();
 
@@ -88,9 +235,13 @@ addThoughtBtn.addEventListener('click', async () => {
             renderThoughts(currentCategory);
             updateCategories();
             thoughtInput.value = '';
+            reminderInput.value = '';
         }
     } catch (e) {
-        alert('Verbindungsfehler. Bitte erneut versuchen.');
+        // Netzwerk eigentlich da, aber Request schlug fehl -> in Warteschlange
+        queueThought(text, reminderAt);
+        thoughtInput.value = '';
+        reminderInput.value = '';
     } finally {
         addThoughtBtn.textContent = 'Hinzufügen';
         addThoughtBtn.disabled = false;
@@ -104,14 +255,38 @@ thoughtInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') addThoughtBtn.click();
 });
 
-// --- HTML escapen (gegen XSS in Gedankentexten) ---
-function escapeHtml(str) {
-    const div = document.createElement('div');
-    div.textContent = str ?? '';
-    return div.innerHTML;
+// =====================================================
+// Wochenrückblick & Muster erkennen
+// =====================================================
+async function runMistralInsight(action, button, loadingLabel, originalLabel) {
+    button.textContent = loadingLabel;
+    button.disabled = true;
+    mistralInsight.hidden = false;
+    mistralInsight.textContent = '⏳ Mistral denkt nach...';
+
+    try {
+        const response = await fetch(`api.php?action=${action}`);
+        const data = await response.json();
+        mistralInsight.textContent = data.summary || data.patterns || data.error || 'Keine Antwort erhalten.';
+    } catch (e) {
+        mistralInsight.textContent = 'Verbindungsfehler. Bitte erneut versuchen.';
+    } finally {
+        button.textContent = originalLabel;
+        button.disabled = false;
+    }
 }
 
-// --- Gedanken rendern ---
+weeklySummaryBtn.addEventListener('click', () => {
+    runMistralInsight('weeklySummary', weeklySummaryBtn, '⏳ Erstelle...', '📅 Wochenrückblick');
+});
+
+findPatternsBtn.addEventListener('click', () => {
+    runMistralInsight('findPatterns', findPatternsBtn, '⏳ Analysiere...', '🔍 Muster erkennen');
+});
+
+// =====================================================
+// Gedanken rendern
+// =====================================================
 function renderThoughts(category = null) {
     const filtered = category
         ? allThoughts.filter(t => t.category === category)
@@ -127,7 +302,8 @@ function renderThoughts(category = null) {
                     <span class="thought-emotion">${getEmoji(t.emotion)} ${escapeHtml(t.emotion) || ''}</span>
                     <span class="thought-priority">${escapeHtml(t.priority) || 'Mittel'}</span>
                 </div>
-                <div class="thought-text" data-text="${escapeHtml(t.text)}">${escapeHtml(t.text)}</div>
+                <div class="thought-text">${escapeHtml(t.text)}</div>
+                ${t.reminder_at ? `<div class="thought-reminder">⏰ Erinnerung: ${new Date(t.reminder_at).toLocaleString('de-DE')}</div>` : ''}
                 <div class="thought-actions">
                     <button class="edit-btn" data-id="${t.id}">✏️ Bearbeiten</button>
                     <button class="delete-btn" data-id="${t.id}">🗑️ Löschen</button>
@@ -137,6 +313,7 @@ function renderThoughts(category = null) {
         : '<div class="thought">Keine Gedanken in dieser Kategorie.</div>';
 
     attachThoughtActionListeners();
+    renderQueuedThoughts();
 }
 
 // --- Lösch- und Bearbeiten-Buttons verdrahten ---
@@ -210,7 +387,7 @@ async function updateCategories() {
     categoryList.innerHTML = `
         <button class="category-btn ${!currentCategory ? 'active' : ''}" data-category="">Alle</button>
         ${categories.map(cat => `
-            <button class="category-btn ${currentCategory === cat ? 'active' : ''}" data-category="${cat}">${cat}</button>
+            <button class="category-btn ${currentCategory === cat ? 'active' : ''}" data-category="${escapeHtml(cat)}">${escapeHtml(cat)}</button>
         `).join('')}
     `;
 
@@ -226,6 +403,7 @@ async function updateCategories() {
 
 // --- Seite initialisieren ---
 async function loadAllThoughts() {
+    updateOfflineBanner();
     thoughtList.innerHTML = '<div class="thought">⏳ Lade Gedanken...</div>';
     try {
         const response = await fetch('api.php?action=getThoughts');
@@ -233,9 +411,18 @@ async function loadAllThoughts() {
         allThoughts = await response.json();
         renderThoughts();
         updateCategories();
+        checkDueReminders();
+        syncQueue();
     } catch (error) {
-        thoughtList.innerHTML = '<div class="thought">Fehler beim Laden. Bitte Seite neu laden.</div>';
+        allThoughts = [];
+        thoughtList.innerHTML = '';
+        renderQueuedThoughts();
+        if (!thoughtList.children.length) {
+            thoughtList.innerHTML = '<div class="thought">Offline oder Fehler beim Laden. Neue Gedanken werden zwischengespeichert.</div>';
+        }
     }
 }
+
+setInterval(checkDueReminders, 60000);
 
 document.addEventListener('DOMContentLoaded', loadAllThoughts);

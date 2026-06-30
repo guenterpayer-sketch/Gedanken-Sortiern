@@ -18,18 +18,15 @@ try {
 
 $action = $_GET['action'] ?? $_POST['action'] ?? '';
 
-// --- Mistral API ---
-function callMistralAPI($text) {
+// --- Generischer Mistral-Aufruf ---
+function callMistralChat($prompt, $temperature = 0.3) {
     $url = 'https://api.mistral.ai/v1/chat/completions';
     $data = [
         'model' => 'mistral-medium',
         'messages' => [
-            [
-                'role' => 'user',
-                'content' => "Analysiere diesen Gedanken und gib das Ergebnis als JSON zurück mit den Feldern: category, priority, emotion. Gedanken: '$text'. Antworte nur mit dem JSON-Objekt, ohne zusätzliche Erklärungen."
-            ]
+            ['role' => 'user', 'content' => $prompt]
         ],
-        'temperature' => 0.1,
+        'temperature' => $temperature,
     ];
 
     $options = [
@@ -37,7 +34,7 @@ function callMistralAPI($text) {
             'header' => "Content-Type: application/json\r\nAuthorization: Bearer " . MISTRAL_API_KEY,
             'method' => 'POST',
             'content' => json_encode($data),
-            'timeout' => 15
+            'timeout' => 30
         ]
     ];
 
@@ -45,25 +42,35 @@ function callMistralAPI($text) {
     $response = @file_get_contents($url, false, $context);
 
     if ($response === false) {
-        return ['category' => 'Unkategorisiert', 'priority' => 'Mittel', 'emotion' => 'neutral'];
+        return null;
     }
 
     $result = json_decode($response, true);
-    if (isset($result['choices'][0]['message']['content'])) {
-        $content = $result['choices'][0]['message']['content'];
-        if (preg_match('/\{.*\}/s', $content, $matches)) {
-            return json_decode($matches[0], true);
-        }
-        return json_decode($content, true);
+    return $result['choices'][0]['message']['content'] ?? null;
+}
+
+// --- Mistral: Gedanken analysieren ---
+function callMistralAPI($text) {
+    $prompt = "Analysiere diesen Gedanken und gib das Ergebnis als JSON zurück mit den Feldern: category, priority, emotion. Gedanken: '$text'. Antworte nur mit dem JSON-Objekt, ohne zusätzliche Erklärungen.";
+    $content = callMistralChat($prompt, 0.1);
+
+    if ($content === null) {
+        return ['category' => 'Unkategorisiert', 'priority' => 'Mittel', 'emotion' => 'neutral'];
     }
 
-    return ['category' => 'Unkategorisiert', 'priority' => 'Mittel', 'emotion' => 'neutral'];
+    if (preg_match('/\{.*\}/s', $content, $matches)) {
+        $parsed = json_decode($matches[0], true);
+        if ($parsed) return $parsed;
+    }
+    $parsed = json_decode($content, true);
+    return $parsed ?: ['category' => 'Unkategorisiert', 'priority' => 'Mittel', 'emotion' => 'neutral'];
 }
 
 // --- Gedanken hinzufügen (POST) ---
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$action) {
     $input = json_decode(file_get_contents('php://input'), true);
     $text = $input['text'] ?? '';
+    $reminderAt = $input['reminder_at'] ?? null;
 
     if (!$text) {
         echo json_encode(['error' => 'Kein Text angegeben']);
@@ -78,8 +85,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$action) {
     $stmt = $pdo->prepare("INSERT IGNORE INTO categories (name) VALUES (?)");
     $stmt->execute([$category]);
 
-    $stmt = $pdo->prepare("INSERT INTO thoughts (text, category, priority, emotion) VALUES (?, ?, ?, ?)");
-    $stmt->execute([$text, $category, $priority, $emotion]);
+    $stmt = $pdo->prepare("INSERT INTO thoughts (text, category, priority, emotion, reminder_at) VALUES (?, ?, ?, ?, ?)");
+    $stmt->execute([$text, $category, $priority, $emotion, $reminderAt ?: null]);
 
     $id = $pdo->lastInsertId();
     $stmt = $pdo->prepare("SELECT * FROM thoughts WHERE id = ?");
@@ -134,6 +141,59 @@ if ($action === 'updateThought' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     $thought = $stmt->fetch(PDO::FETCH_ASSOC);
 
     echo json_encode($thought);
+    exit;
+}
+
+// --- Fällige Erinnerungen abrufen ---
+if ($action === 'getDueReminders') {
+    $stmt = $pdo->prepare("SELECT * FROM thoughts WHERE reminder_at IS NOT NULL AND reminder_at <= NOW() AND reminder_notified = 0");
+    $stmt->execute();
+    $due = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    if ($due) {
+        $ids = array_column($due, 'id');
+        $placeholders = implode(',', array_fill(0, count($ids), '?'));
+        $stmt = $pdo->prepare("UPDATE thoughts SET reminder_notified = 1 WHERE id IN ($placeholders)");
+        $stmt->execute($ids);
+    }
+
+    echo json_encode($due);
+    exit;
+}
+
+// --- Wochenrückblick (Mistral fasst die letzten 7 Tage zusammen) ---
+if ($action === 'weeklySummary') {
+    $stmt = $pdo->query("SELECT text, category, priority, emotion FROM thoughts WHERE created_at >= NOW() - INTERVAL 7 DAY ORDER BY created_at ASC");
+    $thoughts = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    if (!$thoughts) {
+        echo json_encode(['summary' => 'Keine Gedanken in den letzten 7 Tagen gefunden.']);
+        exit;
+    }
+
+    $list = implode("\n", array_map(fn($t) => "- {$t['text']} (Kategorie: {$t['category']}, Emotion: {$t['emotion']}, Priorität: {$t['priority']})", $thoughts));
+    $prompt = "Hier sind Gedanken der letzten 7 Tage einer Person:\n\n$list\n\nErstelle einen kurzen, einfühlsamen Wochenrückblick (max. 150 Wörter) auf Deutsch: Was waren die Hauptthemen? Wie war die emotionale Tendenz? Gibt es etwas Auffälliges? Antworte als Fließtext, ohne JSON.";
+
+    $summary = callMistralChat($prompt, 0.4);
+    echo json_encode(['summary' => $summary ?? 'Zusammenfassung konnte nicht erstellt werden.']);
+    exit;
+}
+
+// --- Muster erkennen (wiederkehrende Themen über mehrere Gedanken) ---
+if ($action === 'findPatterns') {
+    $stmt = $pdo->query("SELECT text, category, priority, emotion FROM thoughts ORDER BY created_at DESC LIMIT 50");
+    $thoughts = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    if (count($thoughts) < 3) {
+        echo json_encode(['patterns' => 'Noch zu wenige Gedanken für eine Mustererkennung. Füge mehr Gedanken hinzu.']);
+        exit;
+    }
+
+    $list = implode("\n", array_map(fn($t) => "- {$t['text']} (Kategorie: {$t['category']}, Emotion: {$t['emotion']})", $thoughts));
+    $prompt = "Hier sind die letzten Gedanken einer Person:\n\n$list\n\nErkenne wiederkehrende Themen, Muster oder Zusammenhänge zwischen diesen Gedanken (max. 150 Wörter, Deutsch). Nenne konkrete Beispiele aus den Gedanken. Antworte als Fließtext, ohne JSON.";
+
+    $patterns = callMistralChat($prompt, 0.4);
+    echo json_encode(['patterns' => $patterns ?? 'Muster konnten nicht erkannt werden.']);
     exit;
 }
 
