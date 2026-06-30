@@ -88,6 +88,29 @@ body.dark-mode .back-link {
     font-size: 17px;
 }
 
+.home-input-area button {
+    width: 100%;
+    box-sizing: border-box;
+    margin-top: 10px;
+    padding: 12px;
+    border: none;
+    border-radius: 8px;
+    background-color: #3498db;
+    color: white;
+    font-size: 16px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.home-input-area button:hover:not(:disabled) {
+    background-color: #2980b9;
+}
+
+.home-input-area button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
 .add-status {
     text-align: center;
     font-size: 13px;
@@ -226,6 +249,16 @@ body.dark-mode .input-section input {
 }
 
 body.dark-mode .input-section input:disabled {
+    background-color: #222;
+}
+
+body.dark-mode .home-input-area input {
+    background-color: #2a2a2a;
+    border-color: #444;
+    color: #e0e0e0;
+}
+
+body.dark-mode .home-input-area input:disabled {
     background-color: #222;
 }
 

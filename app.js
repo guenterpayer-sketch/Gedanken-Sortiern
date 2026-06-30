@@ -6,6 +6,7 @@ const QUEUE_KEY = 'gedanken_offline_queue';
 // --- DOM-Elemente (je nach Seite ist nicht jedes Element vorhanden) ---
 const thoughtForm = document.getElementById('thoughtForm');
 const thoughtInput = document.getElementById('thoughtInput');
+const addThoughtBtn = document.getElementById('addThoughtBtn');
 const addStatus = document.getElementById('addStatus');
 const speechBtn = document.getElementById('speechBtn');
 const thoughtList = document.getElementById('thoughtList');
@@ -213,6 +214,10 @@ if (thoughtForm) {
         if (!text) return;
 
         thoughtInput.disabled = true;
+        if (addThoughtBtn) {
+            addThoughtBtn.disabled = true;
+            addThoughtBtn.textContent = '⏳ Wird gespeichert...';
+        }
         if (addStatus) addStatus.hidden = true;
 
         const result = await submitThought(text);
@@ -220,6 +225,10 @@ if (thoughtForm) {
         thoughtInput.value = '';
         thoughtInput.disabled = false;
         thoughtInput.focus();
+        if (addThoughtBtn) {
+            addThoughtBtn.disabled = false;
+            addThoughtBtn.textContent = 'Absenden';
+        }
 
         if (addStatus) {
             addStatus.textContent = result.error
