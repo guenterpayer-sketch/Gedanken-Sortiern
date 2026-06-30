@@ -347,6 +347,86 @@ h2 {
     cursor: not-allowed;
 }
 
+.reminder-btn {
+    background: white;
+}
+
+.reminder-editor {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-top: 8px;
+    padding: 8px;
+    background: #f0f7fc;
+    border: 1px solid #d0e6f5;
+    border-radius: 4px;
+}
+
+.reminder-editor-input {
+    padding: 6px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 14px;
+}
+
+.reminder-save-btn,
+.reminder-remove-btn,
+.reminder-cancel-btn {
+    padding: 4px 10px;
+    font-size: 12px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    cursor: pointer;
+    background: white;
+    transition: background-color 0.2s;
+}
+
+.reminder-save-btn {
+    background-color: #3498db;
+    color: white;
+    border-color: #2980b9;
+}
+
+.reminder-save-btn:hover {
+    background-color: #2980b9;
+}
+
+.reminder-remove-btn:hover {
+    background-color: #fdecea;
+    border-color: #e74c3c;
+    color: #c0392b;
+}
+
+.reminder-cancel-btn:hover {
+    background-color: #f0f0f0;
+}
+
+body.dark-mode .reminder-editor {
+    background: #1c2e3a;
+    border-color: #2a4a5a;
+}
+
+body.dark-mode .reminder-editor-input {
+    background-color: #2a2a2a;
+    border-color: #444;
+    color: #e0e0e0;
+}
+
+body.dark-mode .reminder-save-btn,
+body.dark-mode .reminder-remove-btn,
+body.dark-mode .reminder-cancel-btn,
+body.dark-mode .reminder-btn {
+    background: #2a2a2a;
+    border-color: #444;
+    color: #e0e0e0;
+}
+
+body.dark-mode .reminder-save-btn {
+    background-color: #3498db;
+    color: white;
+}
+
 /* Priorität-Farben */
 .priority-high {
     border-left-color: #e74c3c;

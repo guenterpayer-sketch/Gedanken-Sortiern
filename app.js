@@ -306,7 +306,14 @@ function renderThoughts(category = null) {
                 ${t.reminder_at ? `<div class="thought-reminder">⏰ Erinnerung: ${new Date(t.reminder_at).toLocaleString('de-DE')}</div>` : ''}
                 <div class="thought-actions">
                     <button class="edit-btn" data-id="${t.id}">✏️ Bearbeiten</button>
+                    <button class="reminder-btn" data-id="${t.id}">⏰ ${t.reminder_at ? 'Erinnerung ändern' : 'Erinnerung setzen'}</button>
                     <button class="delete-btn" data-id="${t.id}">🗑️ Löschen</button>
+                </div>
+                <div class="reminder-editor" data-id="${t.id}" hidden>
+                    <input type="datetime-local" class="reminder-editor-input" value="${t.reminder_at ? t.reminder_at.replace(' ', 'T').slice(0, 16) : ''}">
+                    <button class="reminder-save-btn" data-id="${t.id}">Speichern</button>
+                    ${t.reminder_at ? `<button class="reminder-remove-btn" data-id="${t.id}">Entfernen</button>` : ''}
+                    <button class="reminder-cancel-btn" data-id="${t.id}">Abbrechen</button>
                 </div>
             </div>
         `).join('')
@@ -377,6 +384,60 @@ function attachThoughtActionListeners() {
             }
         });
     });
+
+    // --- Erinnerungs-Editor öffnen/schließen ---
+    document.querySelectorAll('.reminder-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const editor = document.querySelector(`.reminder-editor[data-id="${btn.dataset.id}"]`);
+            if (editor) editor.hidden = !editor.hidden;
+        });
+    });
+
+    document.querySelectorAll('.reminder-cancel-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const editor = document.querySelector(`.reminder-editor[data-id="${btn.dataset.id}"]`);
+            if (editor) editor.hidden = true;
+        });
+    });
+
+    document.querySelectorAll('.reminder-save-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const id = btn.dataset.id;
+            const editor = document.querySelector(`.reminder-editor[data-id="${id}"]`);
+            const value = editor.querySelector('.reminder-editor-input').value;
+            if (!value) {
+                alert('Bitte ein Datum/Uhrzeit wählen.');
+                return;
+            }
+            await saveReminder(id, value);
+        });
+    });
+
+    document.querySelectorAll('.reminder-remove-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            await saveReminder(btn.dataset.id, null);
+        });
+    });
+}
+
+async function saveReminder(id, reminderAt) {
+    try {
+        const response = await fetch('api.php?action=setReminder', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id, reminder_at: reminderAt })
+        });
+        const data = await response.json();
+        if (data.error) {
+            alert('Fehler: ' + data.error);
+            return;
+        }
+        const idx = allThoughts.findIndex(t => String(t.id) === String(id));
+        if (idx !== -1) allThoughts[idx] = data;
+        renderThoughts(currentCategory);
+    } catch (e) {
+        alert('Verbindungsfehler beim Speichern der Erinnerung.');
+    }
 }
 
 // --- Kategorien als Buttons anzeigen ---

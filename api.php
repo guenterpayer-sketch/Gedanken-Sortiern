@@ -144,6 +144,28 @@ if ($action === 'updateThought' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     exit;
 }
 
+// --- Erinnerung für bestehenden Gedanken setzen/ändern/entfernen ---
+if ($action === 'setReminder' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    $input = json_decode(file_get_contents('php://input'), true);
+    $id = $input['id'] ?? null;
+    $reminderAt = $input['reminder_at'] ?? null;
+
+    if (!$id) {
+        echo json_encode(['error' => 'Keine ID angegeben']);
+        exit;
+    }
+
+    $stmt = $pdo->prepare("UPDATE thoughts SET reminder_at = ?, reminder_notified = 0 WHERE id = ?");
+    $stmt->execute([$reminderAt ?: null, $id]);
+
+    $stmt = $pdo->prepare("SELECT * FROM thoughts WHERE id = ?");
+    $stmt->execute([$id]);
+    $thought = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    echo json_encode($thought);
+    exit;
+}
+
 // --- Fällige Erinnerungen abrufen ---
 if ($action === 'getDueReminders') {
     $stmt = $pdo->prepare("SELECT * FROM thoughts WHERE reminder_at IS NOT NULL AND reminder_at <= NOW() AND reminder_notified = 0");
