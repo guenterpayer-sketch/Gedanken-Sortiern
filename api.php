@@ -1,14 +1,16 @@
 <?php
 header('Content-Type: application/json');
 
-// Datenbankverbindung
-$host = 'localhost';
-$dbname = 'd0477c5b';
-$user = 'd0477c5b';
-$pass = '***REMOVED-PASSWORD***';
+// Konfiguration laden (liegt nur auf dem Server, nicht in Git)
+$configFile = __DIR__ . '/config.php';
+if (!file_exists($configFile)) {
+    die(json_encode(['error' => 'config.php fehlt. Bitte config.example.php kopieren und befüllen.']));
+}
+require_once $configFile;
 
+// Datenbankverbindung
 try {
-    $pdo = new PDO("mysql:host=$host;dbname=$dbname", $user, $pass);
+    $pdo = new PDO("mysql:host=" . DB_HOST . ";dbname=" . DB_NAME, DB_USER, DB_PASS);
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 } catch (PDOException $e) {
     die(json_encode(['error' => 'Datenbankfehler: ' . $e->getMessage()]));
@@ -18,7 +20,6 @@ $action = $_GET['action'] ?? $_POST['action'] ?? '';
 
 // --- Mistral API ---
 function callMistralAPI($text) {
-    $apiKey = '***REMOVED-API-KEY***';
     $url = 'https://api.mistral.ai/v1/chat/completions';
     $data = [
         'model' => 'mistral-medium',
@@ -33,7 +34,7 @@ function callMistralAPI($text) {
 
     $options = [
         'http' => [
-            'header' => "Content-Type: application/json\r\nAuthorization: Bearer $apiKey",
+            'header' => "Content-Type: application/json\r\nAuthorization: Bearer " . MISTRAL_API_KEY,
             'method' => 'POST',
             'content' => json_encode($data),
             'timeout' => 15
