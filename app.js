@@ -181,15 +181,21 @@ async function checkDueReminders() {
         //     await showReminderNotification(t);
         // }
 
-        const message = `🔔 Erinnerung: ${due.map(t => `„${escapeHtml(t.text)}"`).join(', ')}`;
+        const message = `🔔 Erinnerung: ${due.map(t => `„${t.text}"`).join(', ')}`;
         reminderBanner.hidden = false;
-        reminderBannerText.textContent = `🔔 Erinnerung: ${due.map(t => `„${t.text}"`).join(', ')}`;
+        reminderBanner.style.display = 'flex';
+        reminderBannerText.textContent = message;
 
         // Bestätigungs-Fallback: kann nicht vom Service-Worker-Cache
         // unterdrückt werden, zeigt zuverlässig, dass die Prüfung lief.
-        window.alert(message);
+        try {
+            window.alert(message);
+        } catch (alertError) {
+            // alert() kann in installierten PWAs gesperrt sein, ignorieren
+        }
     } catch (e) {
-        // still silently
+        // DEBUG: Fehler sichtbar machen statt lautlos zu schlucken
+        window.alert('DEBUG-Fehler in checkDueReminders: ' + (e && e.message ? e.message : e));
     }
 }
 
