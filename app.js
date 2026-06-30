@@ -3,9 +3,10 @@ let allThoughts = [];
 let currentCategory = null;
 const QUEUE_KEY = 'gedanken_offline_queue';
 
-// --- DOM-Elemente ---
+// --- DOM-Elemente (je nach Seite ist nicht jedes Element vorhanden) ---
+const thoughtForm = document.getElementById('thoughtForm');
 const thoughtInput = document.getElementById('thoughtInput');
-const addThoughtBtn = document.getElementById('addThoughtBtn');
+const addStatus = document.getElementById('addStatus');
 const speechBtn = document.getElementById('speechBtn');
 const thoughtList = document.getElementById('thoughtList');
 const categoryList = document.getElementById('categoryList');
@@ -55,13 +56,15 @@ function escapeHtml(str) {
 // =====================================================
 function applyDarkMode(enabled) {
     document.body.classList.toggle('dark-mode', enabled);
-    darkModeBtn.textContent = enabled ? '☀️' : '🌙';
+    if (darkModeBtn) darkModeBtn.textContent = enabled ? '☀️' : '🌙';
     localStorage.setItem('darkMode', enabled ? '1' : '0');
 }
 
-darkModeBtn.addEventListener('click', () => {
-    applyDarkMode(!document.body.classList.contains('dark-mode'));
-});
+if (darkModeBtn) {
+    darkModeBtn.addEventListener('click', () => {
+        applyDarkMode(!document.body.classList.contains('dark-mode'));
+    });
+}
 
 applyDarkMode(localStorage.getItem('darkMode') === '1');
 
@@ -88,6 +91,7 @@ function queueThought(text) {
 }
 
 function renderQueuedThoughts() {
+    if (!thoughtList) return;
     const queue = getQueue();
     const existing = thoughtList.querySelectorAll('.thought.pending');
     existing.forEach(el => el.remove());
@@ -134,7 +138,7 @@ async function syncQueue() {
 }
 
 function updateOfflineBanner() {
-    offlineBanner.hidden = navigator.onLine;
+    if (offlineBanner) offlineBanner.hidden = navigator.onLine;
 }
 
 window.addEventListener('online', () => {
@@ -146,49 +150,42 @@ window.addEventListener('offline', updateOfflineBanner);
 // =====================================================
 // Spracherkennung
 // =====================================================
-speechBtn.addEventListener('click', () => {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-        alert('Spracherkennung wird von diesem Browser nicht unterstützt.');
-        return;
-    }
-    const recognition = new SpeechRecognition();
-    recognition.lang = 'de-DE';
+if (speechBtn) {
+    speechBtn.addEventListener('click', () => {
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SpeechRecognition) {
+            alert('Spracherkennung wird von diesem Browser nicht unterstützt.');
+            return;
+        }
+        const recognition = new SpeechRecognition();
+        recognition.lang = 'de-DE';
 
-    speechBtn.textContent = '🔴 Aufnahme...';
-    speechBtn.disabled = true;
+        speechBtn.classList.add('recording');
+        speechBtn.disabled = true;
 
-    recognition.onresult = (event) => {
-        thoughtInput.value = event.results[0][0].transcript;
-    };
-    recognition.onerror = () => {
-        speechBtn.textContent = '🎤 Sprache';
-        speechBtn.disabled = false;
-    };
-    recognition.onend = () => {
-        speechBtn.textContent = '🎤 Sprache';
-        speechBtn.disabled = false;
-    };
-    recognition.start();
-});
+        recognition.onresult = (event) => {
+            thoughtInput.value = event.results[0][0].transcript;
+        };
+        recognition.onerror = () => {
+            speechBtn.classList.remove('recording');
+            speechBtn.disabled = false;
+        };
+        recognition.onend = () => {
+            speechBtn.classList.remove('recording');
+            speechBtn.disabled = false;
+        };
+        recognition.start();
+    });
+}
 
 // =====================================================
 // Gedanken hinzufügen
 // =====================================================
-addThoughtBtn.addEventListener('click', async () => {
-    const text = thoughtInput.value.trim();
-    if (!text) return;
-
+async function submitThought(text) {
     if (!navigator.onLine) {
         queueThought(text);
-        thoughtInput.value = '';
-        return;
+        return { queued: true };
     }
-
-    addThoughtBtn.textContent = '⏳ Analysiere...';
-    addThoughtBtn.disabled = true;
-    thoughtInput.disabled = true;
-
     try {
         const response = await fetch('api.php', {
             method: 'POST',
@@ -196,31 +193,46 @@ addThoughtBtn.addEventListener('click', async () => {
             body: JSON.stringify({ text })
         });
         const data = await response.json();
+        if (data.error) return { error: data.error };
 
-        if (data.error) {
-            alert('Fehler: ' + data.error);
-        } else {
-            allThoughts.unshift(data);
-            renderThoughts(currentCategory);
-            updateCategories();
-            thoughtInput.value = '';
-        }
+        allThoughts.unshift(data);
+        renderThoughts(currentCategory);
+        updateCategories();
+        return { success: true };
     } catch (e) {
         // Netzwerk eigentlich da, aber Request schlug fehl -> in Warteschlange
         queueThought(text);
+        return { queued: true };
+    }
+}
+
+if (thoughtForm) {
+    thoughtForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const text = thoughtInput.value.trim();
+        if (!text) return;
+
+        thoughtInput.disabled = true;
+        if (addStatus) addStatus.hidden = true;
+
+        const result = await submitThought(text);
+
         thoughtInput.value = '';
-    } finally {
-        addThoughtBtn.textContent = 'Hinzufügen';
-        addThoughtBtn.disabled = false;
         thoughtInput.disabled = false;
         thoughtInput.focus();
-    }
-});
 
-// Enter-Taste zum Absenden
-thoughtInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') addThoughtBtn.click();
-});
+        if (addStatus) {
+            addStatus.textContent = result.error
+                ? ('Fehler: ' + result.error)
+                : result.queued
+                    ? '⏳ Gespeichert — wird gesendet, sobald wieder online.'
+                    : '✅ Gedanke gespeichert & sortiert.';
+            addStatus.hidden = false;
+            clearTimeout(addStatus._timer);
+            addStatus._timer = setTimeout(() => { addStatus.hidden = true; }, 3000);
+        }
+    });
+}
 
 // =====================================================
 // Wochenrückblick & Muster erkennen
@@ -243,18 +255,23 @@ async function runMistralInsight(action, button, loadingLabel, originalLabel) {
     }
 }
 
-weeklySummaryBtn.addEventListener('click', () => {
-    runMistralInsight('weeklySummary', weeklySummaryBtn, '⏳ Erstelle...', '📅 Wochenrückblick');
-});
+if (weeklySummaryBtn) {
+    weeklySummaryBtn.addEventListener('click', () => {
+        runMistralInsight('weeklySummary', weeklySummaryBtn, '⏳ Erstelle...', '📅 Wochenrückblick');
+    });
+}
 
-findPatternsBtn.addEventListener('click', () => {
-    runMistralInsight('findPatterns', findPatternsBtn, '⏳ Analysiere...', '🔍 Muster erkennen');
-});
+if (findPatternsBtn) {
+    findPatternsBtn.addEventListener('click', () => {
+        runMistralInsight('findPatterns', findPatternsBtn, '⏳ Analysiere...', '🔍 Muster erkennen');
+    });
+}
 
 // =====================================================
 // Gedanken rendern
 // =====================================================
 function renderThoughts(category = null) {
+    if (!thoughtList) return;
     const filtered = category
         ? allThoughts.filter(t => t.category === category)
         : allThoughts;
@@ -347,6 +364,7 @@ function attachThoughtActionListeners() {
 
 // --- Kategorien als Buttons anzeigen ---
 async function updateCategories() {
+    if (!categoryList) return;
     const response = await fetch('api.php?action=getCategories');
     const categories = await response.json();
 
@@ -369,7 +387,6 @@ async function updateCategories() {
 
 // --- Seite initialisieren ---
 async function loadAllThoughts() {
-    updateOfflineBanner();
     thoughtList.innerHTML = '<div class="thought">⏳ Lade Gedanken...</div>';
     try {
         const response = await fetch('api.php?action=getThoughts');
@@ -388,4 +405,12 @@ async function loadAllThoughts() {
     }
 }
 
-document.addEventListener('DOMContentLoaded', loadAllThoughts);
+document.addEventListener('DOMContentLoaded', () => {
+    updateOfflineBanner();
+    if (thoughtList) {
+        loadAllThoughts();
+    } else {
+        syncQueue();
+    }
+    if (thoughtInput) thoughtInput.focus();
+});

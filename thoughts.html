@@ -3,42 +3,39 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gedanken-Sortierer</title>
+    <title>Meine Gedanken — Gedanken-Sortierer</title>
     <link rel="manifest" href="manifest.json">
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div class="container home-container">
+    <div class="container">
         <div class="top-bar">
-            <h1>Gedanken sortieren</h1>
+            <a href="index.html" class="back-link" title="Zurück zur Eingabe">←</a>
+            <h1>Meine Gedanken</h1>
             <button id="darkModeBtn" title="Dark Mode umschalten">🌙</button>
         </div>
 
         <div id="offlineBanner" class="offline-banner" hidden>📡 Offline — Gedanken werden zwischengespeichert und später gesendet.</div>
 
-        <form id="thoughtForm" class="home-input-area">
-            <input type="text" id="thoughtInput" placeholder="Gedanken eingeben..." autocomplete="off">
-        </form>
-        <div id="addStatus" class="add-status" hidden></div>
-
-        <div class="home-spacer home-spacer-top"></div>
-
-        <div class="home-mic-area">
-            <button type="button" id="speechBtn" class="mic-btn" title="Sprache eingeben">🎤</button>
+        <div class="input-section">
+            <button id="weeklySummaryBtn">📅 Wochenrückblick</button>
+            <button id="findPatternsBtn">🔍 Muster erkennen</button>
         </div>
+        <div id="mistralInsight" class="mistral-insight" hidden></div>
 
-        <div class="home-spacer home-spacer-bottom"></div>
+        <!-- Kategorien als Buttons -->
+        <div class="category-list" id="categoryList"></div>
 
-        <a href="thoughts.html" class="thoughts-link">📋 Meine Gedanken ansehen</a>
+        <div class="thoughts">
+            <h2>Sortierte Gedanken</h2>
+            <div id="thoughtList"></div>
+        </div>
     </div>
     <script src="app.js"></script>
 
 <script>
   // Service Worker registrieren
   if ('serviceWorker' in navigator) {
-    // Sobald ein neuer Service Worker die Kontrolle übernimmt (z.B. weil
-    // eine neue Version hochgeladen wurde), lädt die Seite automatisch neu,
-    // damit eine bereits offene App-Instanz nicht mit veraltetem JS weiterläuft.
     let reloadingForUpdate = false;
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       if (reloadingForUpdate) return;
@@ -50,7 +47,6 @@
       navigator.serviceWorker.register('./sw.js')
         .then((registration) => {
           console.log('ServiceWorker registriert:', registration.scope);
-          // Beim Start aktiv nach einer neueren Version suchen.
           registration.update();
           setInterval(() => registration.update(), 60 * 1000);
         })
