@@ -201,13 +201,20 @@ speechBtn.addEventListener('click', () => {
     recognition.start();
 });
 
+// Wandelt den Wert eines <input type="datetime-local"> ("YYYY-MM-DDTHH:MM")
+// in das von MySQL DATETIME erwartete Format ("YYYY-MM-DD HH:MM:00") um.
+function toMysqlDatetime(localValue) {
+    if (!localValue) return null;
+    return localValue.replace('T', ' ') + ':00';
+}
+
 // =====================================================
 // Gedanken hinzufügen
 // =====================================================
 addThoughtBtn.addEventListener('click', async () => {
     const text = thoughtInput.value.trim();
     if (!text) return;
-    const reminderAt = reminderInput.value || null;
+    const reminderAt = toMysqlDatetime(reminderInput.value);
 
     if (!navigator.onLine) {
         queueThought(text, reminderAt);
@@ -409,7 +416,7 @@ function attachThoughtActionListeners() {
                 alert('Bitte ein Datum/Uhrzeit wählen.');
                 return;
             }
-            await saveReminder(id, value);
+            await saveReminder(id, toMysqlDatetime(value));
         });
     });
 
