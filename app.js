@@ -207,12 +207,17 @@ async function submitThought(text) {
     }
 }
 
+let isSubmittingThought = false;
+
 if (thoughtForm) {
     thoughtForm.addEventListener('submit', async (e) => {
         e.preventDefault();
+        if (isSubmittingThought) return;
+
         const text = thoughtInput.value.trim();
         if (!text) return;
 
+        isSubmittingThought = true;
         thoughtInput.disabled = true;
         if (addThoughtBtn) {
             addThoughtBtn.disabled = true;
@@ -221,6 +226,7 @@ if (thoughtForm) {
         if (addStatus) addStatus.hidden = true;
 
         const result = await submitThought(text);
+        isSubmittingThought = false;
 
         thoughtInput.value = '';
         thoughtInput.disabled = false;
