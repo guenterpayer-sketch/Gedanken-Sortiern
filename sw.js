@@ -1,5 +1,5 @@
 // Service Worker für die PWA (gedanken.spass-am-tanzen.de)
-const CACHE_NAME = 'gedanken-pwa-v17';
+const CACHE_NAME = 'gedanken-pwa-v18';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
@@ -28,9 +28,13 @@ self.addEventListener('install', (event) => {
 
 // Fetch: Cache-first-Strategie für statische Ressourcen
 self.addEventListener('fetch', (event) => {
-  // API-Anfragen nicht cachen (da sie dynamisch sind)
+  // API-Anfragen nicht abfangen (da dynamisch) — ohne respondWith() lässt der
+  // Browser die Anfrage ganz normal selbst laufen. Würde man hier stattdessen
+  // manuell fetch(event.request) aufrufen ohne respondWith(), würde der
+  // Browser ZUSÄTZLICH seine eigene Anfrage senden -> jede POST-Anfrage
+  // (z.B. neuer Gedanke) würde doppelt beim Server ankommen.
   if (event.request.url.includes('/api.php')) {
-    return fetch(event.request);
+    return;
   }
 
   // Statische Ressourcen aus dem Cache laden
