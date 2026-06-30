@@ -49,6 +49,10 @@ h2 {
     font-size: 16px;
 }
 
+.input-section input:disabled {
+    background-color: #f0f0f0;
+}
+
 .input-section button {
     padding: 10px 15px;
     background-color: #3498db;
@@ -57,21 +61,27 @@ h2 {
     border-radius: 4px;
     cursor: pointer;
     font-size: 16px;
+    transition: background-color 0.2s;
 }
 
-.input-section button:hover {
+.input-section button:hover:not(:disabled) {
     background-color: #2980b9;
+}
+
+.input-section button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
 }
 
 #speechBtn {
     background-color: #e74c3c;
 }
 
-#speechBtn:hover {
+#speechBtn:hover:not(:disabled) {
     background-color: #c0392b;
 }
 
-/* Kategorien-Buttons */
+/* Kategorien */
 .category-list {
     margin: 20px 0;
     display: flex;
@@ -112,11 +122,71 @@ h2 {
     border-left: 4px solid #3498db;
 }
 
-.thought strong {
-    color: #2c3e50;
+.thought-header {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    margin-bottom: 6px;
+    flex-wrap: wrap;
 }
 
-/* Responsive Design für Handy */
+.thought-category {
+    font-weight: bold;
+    color: #2c3e50;
+    font-size: 13px;
+    background: #e8f4fd;
+    padding: 2px 8px;
+    border-radius: 10px;
+}
+
+.thought-emotion {
+    font-size: 13px;
+    color: #555;
+}
+
+.thought-priority {
+    font-size: 12px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    margin-left: auto;
+    background: #eee;
+    color: #666;
+}
+
+.thought-text {
+    color: #333;
+    font-size: 15px;
+}
+
+/* Priorität-Farben */
+.priority-high {
+    border-left-color: #e74c3c;
+}
+
+.priority-high .thought-priority {
+    background: #fdecea;
+    color: #c0392b;
+}
+
+.priority-medium {
+    border-left-color: #f39c12;
+}
+
+.priority-medium .thought-priority {
+    background: #fef9e7;
+    color: #d68910;
+}
+
+.priority-low {
+    border-left-color: #27ae60;
+}
+
+.priority-low .thought-priority {
+    background: #eafaf1;
+    color: #1e8449;
+}
+
+/* Responsive Design */
 @media (max-width: 600px) {
     .container {
         margin: 10px;
@@ -127,8 +197,10 @@ h2 {
         flex-direction: column;
     }
 
-    .input-section input, .input-section button {
+    .input-section input,
+    .input-section button {
         width: 100%;
+        box-sizing: border-box;
     }
 
     .category-btn {
