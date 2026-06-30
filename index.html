@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gedanken-Sortierer</title>
+    <link rel="manifest" href="manifest.json">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Gedanken sortieren</h1>
+        <div class="input-section">
+            <input type="text" id="thoughtInput" placeholder="Gedanken eingeben...">
+            <button id="addThoughtBtn">Hinzufügen</button>
+            <button id="speechBtn">🎤 Sprache</button>
+        </div>
+
+        <!-- Kategorien als Buttons -->
+        <div class="category-list" id="categoryList"></div>
+
+        <div class="thoughts">
+            <h2>Sortierte Gedanken</h2>
+            <div id="thoughtList"></div>
+        </div>
+    </div>
+    <script src="app.js"></script>
+
+<script>
+  // Service Worker registrieren
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/sw.js')
+        .then((registration) => {
+          console.log('ServiceWorker registriert:', registration.scope);
+        })
+        .catch((error) => {
+          console.error('ServiceWorker-Registrierung fehlgeschlagen:', error);
+        });
+    });
+  }
+</script>
+	</body>
+</html>
