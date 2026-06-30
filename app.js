@@ -5,17 +5,12 @@ const QUEUE_KEY = 'gedanken_offline_queue';
 
 // --- DOM-Elemente ---
 const thoughtInput = document.getElementById('thoughtInput');
-const reminderInput = document.getElementById('reminderInput');
 const addThoughtBtn = document.getElementById('addThoughtBtn');
 const speechBtn = document.getElementById('speechBtn');
 const thoughtList = document.getElementById('thoughtList');
 const categoryList = document.getElementById('categoryList');
 const darkModeBtn = document.getElementById('darkModeBtn');
 const offlineBanner = document.getElementById('offlineBanner');
-const reminderBanner = document.getElementById('reminderBanner');
-const reminderBannerText = document.getElementById('reminderBannerText');
-const reminderBannerCloseBtn = document.getElementById('reminderBannerCloseBtn');
-const checkRemindersBtn = document.getElementById('checkRemindersBtn');
 const weeklySummaryBtn = document.getElementById('weeklySummaryBtn');
 const findPatternsBtn = document.getElementById('findPatternsBtn');
 const mistralInsight = document.getElementById('mistralInsight');
@@ -85,9 +80,9 @@ function saveQueue(queue) {
     localStorage.setItem(QUEUE_KEY, JSON.stringify(queue));
 }
 
-function queueThought(text, reminderAt) {
+function queueThought(text) {
     const queue = getQueue();
-    queue.push({ tempId: 'pending-' + Date.now() + '-' + Math.random(), text, reminder_at: reminderAt || null });
+    queue.push({ tempId: 'pending-' + Date.now() + '-' + Math.random(), text });
     saveQueue(queue);
     renderQueuedThoughts();
 }
@@ -121,7 +116,7 @@ async function syncQueue() {
             const response = await fetch('api.php', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ text: item.text, reminder_at: item.reminder_at })
+                body: JSON.stringify({ text: item.text })
             });
             const data = await response.json();
             if (data.error) throw new Error(data.error);
@@ -147,64 +142,6 @@ window.addEventListener('online', () => {
     syncQueue();
 });
 window.addEventListener('offline', updateOfflineBanner);
-
-// =====================================================
-// Erinnerungen
-// =====================================================
-async function showReminderNotification(t) {
-    if (Notification.permission !== 'granted') return;
-    try {
-        // Auf vielen mobilen Browsern (z.B. Android Chrome) ist der
-        // Notification-Konstruktor in PWAs mit Service Worker gesperrt,
-        // dort muss stattdessen die ServiceWorkerRegistration genutzt werden.
-        if (navigator.serviceWorker) {
-            const registration = await navigator.serviceWorker.getRegistration();
-            if (registration) {
-                await registration.showNotification('Erinnerung an deinen Gedanken', { body: t.text });
-                return;
-            }
-        }
-        new Notification('Erinnerung an deinen Gedanken', { body: t.text });
-    } catch (e) {
-        // Notification fehlgeschlagen, Banner wird trotzdem angezeigt
-    }
-}
-
-async function checkDueReminders(manualTest) {
-    if (!navigator.onLine) {
-        if (manualTest) window.alert('Du bist offline — Prüfung nicht möglich.');
-        return;
-    }
-    try {
-        const response = await fetch('api.php?action=getDueReminders');
-        if (!response.ok) throw new Error('HTTP ' + response.status);
-        const due = await response.json();
-        if (!Array.isArray(due)) throw new Error('Unerwartete Server-Antwort: ' + JSON.stringify(due).slice(0, 200));
-
-        if (!due.length) {
-            if (manualTest) window.alert('Prüfung erfolgreich gelaufen — aktuell keine fällige Erinnerung gefunden.');
-            return;
-        }
-
-        const message = `🔔 Erinnerung: ${due.map(t => `„${t.text}"`).join(', ')}`;
-        reminderBanner.hidden = false;
-        reminderBanner.style.display = 'flex';
-        reminderBannerText.textContent = message;
-        window.alert(message);
-    } catch (e) {
-        window.alert('Fehler bei der Erinnerungs-Prüfung: ' + (e && e.message ? e.message : e));
-    }
-}
-
-reminderBannerCloseBtn.addEventListener('click', () => {
-    reminderBanner.hidden = true;
-});
-
-checkRemindersBtn.addEventListener('click', () => checkDueReminders(true));
-
-if ('Notification' in window && Notification.permission === 'default') {
-    Notification.requestPermission();
-}
 
 // =====================================================
 // Spracherkennung
@@ -235,25 +172,16 @@ speechBtn.addEventListener('click', () => {
     recognition.start();
 });
 
-// Wandelt den Wert eines <input type="datetime-local"> ("YYYY-MM-DDTHH:MM")
-// in das von MySQL DATETIME erwartete Format ("YYYY-MM-DD HH:MM:00") um.
-function toMysqlDatetime(localValue) {
-    if (!localValue) return null;
-    return localValue.replace('T', ' ') + ':00';
-}
-
 // =====================================================
 // Gedanken hinzufügen
 // =====================================================
 addThoughtBtn.addEventListener('click', async () => {
     const text = thoughtInput.value.trim();
     if (!text) return;
-    const reminderAt = toMysqlDatetime(reminderInput.value);
 
     if (!navigator.onLine) {
-        queueThought(text, reminderAt);
+        queueThought(text);
         thoughtInput.value = '';
-        reminderInput.value = '';
         return;
     }
 
@@ -265,7 +193,7 @@ addThoughtBtn.addEventListener('click', async () => {
         const response = await fetch('api.php', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text, reminder_at: reminderAt })
+            body: JSON.stringify({ text })
         });
         const data = await response.json();
 
@@ -276,13 +204,11 @@ addThoughtBtn.addEventListener('click', async () => {
             renderThoughts(currentCategory);
             updateCategories();
             thoughtInput.value = '';
-            reminderInput.value = '';
         }
     } catch (e) {
         // Netzwerk eigentlich da, aber Request schlug fehl -> in Warteschlange
-        queueThought(text, reminderAt);
+        queueThought(text);
         thoughtInput.value = '';
-        reminderInput.value = '';
     } finally {
         addThoughtBtn.textContent = 'Hinzufügen';
         addThoughtBtn.disabled = false;
@@ -344,17 +270,9 @@ function renderThoughts(category = null) {
                     <span class="thought-priority">${escapeHtml(t.priority) || 'Mittel'}</span>
                 </div>
                 <div class="thought-text">${escapeHtml(t.text)}</div>
-                ${t.reminder_at ? `<div class="thought-reminder">⏰ Erinnerung: ${new Date(t.reminder_at).toLocaleString('de-DE')}</div>` : ''}
                 <div class="thought-actions">
                     <button class="edit-btn" data-id="${t.id}">✏️ Bearbeiten</button>
-                    <button class="reminder-btn" data-id="${t.id}">⏰ ${t.reminder_at ? 'Erinnerung ändern' : 'Erinnerung setzen'}</button>
                     <button class="delete-btn" data-id="${t.id}">🗑️ Löschen</button>
-                </div>
-                <div class="reminder-editor" data-id="${t.id}" hidden>
-                    <input type="datetime-local" class="reminder-editor-input" value="${t.reminder_at ? t.reminder_at.replace(' ', 'T').slice(0, 16) : ''}">
-                    <button class="reminder-save-btn" data-id="${t.id}">Speichern</button>
-                    ${t.reminder_at ? `<button class="reminder-remove-btn" data-id="${t.id}">Entfernen</button>` : ''}
-                    <button class="reminder-cancel-btn" data-id="${t.id}">Abbrechen</button>
                 </div>
             </div>
         `).join('')
@@ -425,60 +343,6 @@ function attachThoughtActionListeners() {
             }
         });
     });
-
-    // --- Erinnerungs-Editor öffnen/schließen ---
-    document.querySelectorAll('.reminder-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-            const editor = document.querySelector(`.reminder-editor[data-id="${btn.dataset.id}"]`);
-            if (editor) editor.hidden = !editor.hidden;
-        });
-    });
-
-    document.querySelectorAll('.reminder-cancel-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-            const editor = document.querySelector(`.reminder-editor[data-id="${btn.dataset.id}"]`);
-            if (editor) editor.hidden = true;
-        });
-    });
-
-    document.querySelectorAll('.reminder-save-btn').forEach(btn => {
-        btn.addEventListener('click', async () => {
-            const id = btn.dataset.id;
-            const editor = document.querySelector(`.reminder-editor[data-id="${id}"]`);
-            const value = editor.querySelector('.reminder-editor-input').value;
-            if (!value) {
-                alert('Bitte ein Datum/Uhrzeit wählen.');
-                return;
-            }
-            await saveReminder(id, toMysqlDatetime(value));
-        });
-    });
-
-    document.querySelectorAll('.reminder-remove-btn').forEach(btn => {
-        btn.addEventListener('click', async () => {
-            await saveReminder(btn.dataset.id, null);
-        });
-    });
-}
-
-async function saveReminder(id, reminderAt) {
-    try {
-        const response = await fetch('api.php?action=setReminder', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id, reminder_at: reminderAt })
-        });
-        const data = await response.json();
-        if (data.error) {
-            alert('Fehler: ' + data.error);
-            return;
-        }
-        const idx = allThoughts.findIndex(t => String(t.id) === String(id));
-        if (idx !== -1) allThoughts[idx] = data;
-        renderThoughts(currentCategory);
-    } catch (e) {
-        alert('Verbindungsfehler beim Speichern der Erinnerung.');
-    }
 }
 
 // --- Kategorien als Buttons anzeigen ---
@@ -513,8 +377,6 @@ async function loadAllThoughts() {
         allThoughts = await response.json();
         renderThoughts();
         updateCategories();
-        // TEMPORÄR deaktiviert zum Testen — nur noch manueller Button löst die Prüfung aus.
-        // checkDueReminders();
         syncQueue();
     } catch (error) {
         allThoughts = [];
@@ -525,8 +387,5 @@ async function loadAllThoughts() {
         }
     }
 }
-
-// TEMPORÄR deaktiviert zum Testen — nur noch manueller Button löst die Prüfung aus.
-// setInterval(checkDueReminders, 60000);
 
 document.addEventListener('DOMContentLoaded', loadAllThoughts);

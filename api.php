@@ -70,7 +70,6 @@ function callMistralAPI($text) {
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$action) {
     $input = json_decode(file_get_contents('php://input'), true);
     $text = $input['text'] ?? '';
-    $reminderAt = $input['reminder_at'] ?? null;
 
     if (!$text) {
         echo json_encode(['error' => 'Kein Text angegeben']);
@@ -85,8 +84,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$action) {
     $stmt = $pdo->prepare("INSERT IGNORE INTO categories (name) VALUES (?)");
     $stmt->execute([$category]);
 
-    $stmt = $pdo->prepare("INSERT INTO thoughts (text, category, priority, emotion, reminder_at) VALUES (?, ?, ?, ?, ?)");
-    $stmt->execute([$text, $category, $priority, $emotion, $reminderAt ?: null]);
+    $stmt = $pdo->prepare("INSERT INTO thoughts (text, category, priority, emotion) VALUES (?, ?, ?, ?)");
+    $stmt->execute([$text, $category, $priority, $emotion]);
 
     $id = $pdo->lastInsertId();
     $stmt = $pdo->prepare("SELECT * FROM thoughts WHERE id = ?");
@@ -141,45 +140,6 @@ if ($action === 'updateThought' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     $thought = $stmt->fetch(PDO::FETCH_ASSOC);
 
     echo json_encode($thought);
-    exit;
-}
-
-// --- Erinnerung für bestehenden Gedanken setzen/ändern/entfernen ---
-if ($action === 'setReminder' && $_SERVER['REQUEST_METHOD'] === 'POST') {
-    $input = json_decode(file_get_contents('php://input'), true);
-    $id = $input['id'] ?? null;
-    $reminderAt = $input['reminder_at'] ?? null;
-
-    if (!$id) {
-        echo json_encode(['error' => 'Keine ID angegeben']);
-        exit;
-    }
-
-    $stmt = $pdo->prepare("UPDATE thoughts SET reminder_at = ?, reminder_notified = 0 WHERE id = ?");
-    $stmt->execute([$reminderAt ?: null, $id]);
-
-    $stmt = $pdo->prepare("SELECT * FROM thoughts WHERE id = ?");
-    $stmt->execute([$id]);
-    $thought = $stmt->fetch(PDO::FETCH_ASSOC);
-
-    echo json_encode($thought);
-    exit;
-}
-
-// --- Fällige Erinnerungen abrufen ---
-if ($action === 'getDueReminders') {
-    $stmt = $pdo->prepare("SELECT * FROM thoughts WHERE reminder_at IS NOT NULL AND reminder_at <= NOW() AND reminder_notified = 0");
-    $stmt->execute();
-    $due = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-    if ($due) {
-        $ids = array_column($due, 'id');
-        $placeholders = implode(',', array_fill(0, count($ids), '?'));
-        $stmt = $pdo->prepare("UPDATE thoughts SET reminder_notified = 1 WHERE id IN ($placeholders)");
-        $stmt->execute($ids);
-    }
-
-    echo json_encode($due);
     exit;
 }
 
