@@ -174,9 +174,10 @@ async function checkDueReminders() {
         const due = await response.json();
         if (!Array.isArray(due) || !due.length) return;
 
-        for (const t of due) {
-            await showReminderNotification(t);
-        }
+        // TEMPORÄR zum Testen deaktiviert: Push-/Notification-Versuch.
+        // for (const t of due) {
+        //     await showReminderNotification(t);
+        // }
 
         reminderBanner.hidden = false;
         reminderBanner.innerHTML = `🔔 Erinnerung: ${due.map(t => `„${escapeHtml(t.text)}"`).join(', ')}`;
