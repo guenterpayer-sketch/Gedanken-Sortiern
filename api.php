@@ -3,9 +3,9 @@ header('Content-Type: application/json');
 
 // Datenbankverbindung
 $host = 'localhost';
-$dbname = 'd0477c5b'; // Ersetze mit deinem Datenbanknamen
-$user = 'd0477c5b'; // Ersetze mit deinem MySQL-Benutzernamen
-$pass = 'FroschMonitor01?'; // Ersetze mit deinem MySQL-Passwort
+$dbname = 'd0477c5b';
+$user = 'd0477c5b';
+$pass = 'FroschMonitor01?';
 
 try {
     $pdo = new PDO("mysql:host=$host;dbname=$dbname", $user, $pass);
@@ -14,13 +14,11 @@ try {
     die(json_encode(['error' => 'Datenbankfehler: ' . $e->getMessage()]));
 }
 
-// Aktion abrufen
 $action = $_GET['action'] ?? $_POST['action'] ?? '';
 
-// --- Mistral API-Funktion ---
+// --- Mistral API ---
 function callMistralAPI($text) {
-    $apiKey = 'R68I7W39t9W0ZRWR3IYZteFC45OJR1q2'; // 👈 Hier deinen API-Key eintragen!
-
+    $apiKey = 'R68I7W39t9W0ZRWR3IYZteFC45OJR1q2';
     $url = 'https://api.mistral.ai/v1/chat/completions';
     $data = [
         'model' => 'mistral-medium',
@@ -30,7 +28,7 @@ function callMistralAPI($text) {
                 'content' => "Analysiere diesen Gedanken und gib das Ergebnis als JSON zurück mit den Feldern: category, priority, emotion. Gedanken: '$text'. Antworte nur mit dem JSON-Objekt, ohne zusätzliche Erklärungen."
             ]
         ],
-        'temperature' => 0.1, // Niedrige Temperatur für deterministischere Ergebnisse
+        'temperature' => 0.1,
     ];
 
     $options = [
@@ -38,7 +36,7 @@ function callMistralAPI($text) {
             'header' => "Content-Type: application/json\r\nAuthorization: Bearer $apiKey",
             'method' => 'POST',
             'content' => json_encode($data),
-            'timeout' => 10 // Timeout in Sekunden
+            'timeout' => 15
         ]
     ];
 
@@ -46,21 +44,19 @@ function callMistralAPI($text) {
     $response = @file_get_contents($url, false, $context);
 
     if ($response === false) {
-        return ['category' => 'Unkategorisiert', 'priority' => 'Mittel', 'emotion' => null];
+        return ['category' => 'Unkategorisiert', 'priority' => 'Mittel', 'emotion' => 'neutral'];
     }
 
     $result = json_decode($response, true);
     if (isset($result['choices'][0]['message']['content'])) {
         $content = $result['choices'][0]['message']['content'];
-        // Extrahiere das JSON-Objekt aus der Antwort (falls Mistral z. B. Markdown zurückgibt)
         if (preg_match('/\{.*\}/s', $content, $matches)) {
             return json_decode($matches[0], true);
         }
         return json_decode($content, true);
     }
 
-    // Fallback, falls die API nicht antwortet
-    return ['category' => 'Unkategorisiert', 'priority' => 'Mittel', 'emotion' => null];
+    return ['category' => 'Unkategorisiert', 'priority' => 'Mittel', 'emotion' => 'neutral'];
 }
 
 // --- Gedanken hinzufügen (POST) ---
@@ -73,26 +69,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$action) {
         exit;
     }
 
-    // 👇 Hier wird die Mistral API aufgerufen
     $analysis = callMistralAPI($text);
     $category = $analysis['category'] ?? 'Unkategorisiert';
     $priority = $analysis['priority'] ?? 'Mittel';
-    $emotion = $analysis['emotion'] ?? null;
+    $emotion = $analysis['emotion'] ?? 'neutral';
 
-    // Kategorie in Datenbank speichern (falls neu)
     $stmt = $pdo->prepare("INSERT IGNORE INTO categories (name) VALUES (?)");
     $stmt->execute([$category]);
 
-    // Gedanken speichern
     $stmt = $pdo->prepare("INSERT INTO thoughts (text, category, priority, emotion) VALUES (?, ?, ?, ?)");
     $stmt->execute([$text, $category, $priority, $emotion]);
 
-    echo json_encode([
-        'text' => $text,
-        'category' => $category,
-        'priority' => $priority,
-        'emotion' => $emotion
-    ]);
+    $id = $pdo->lastInsertId();
+    $stmt = $pdo->prepare("SELECT * FROM thoughts WHERE id = ?");
+    $stmt->execute([$id]);
+    $thought = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    echo json_encode($thought);
+    exit;
+}
+
+// --- Alle Gedanken abrufen ---
+if ($action === 'getThoughts') {
+    $stmt = $pdo->query("SELECT * FROM thoughts ORDER BY created_at DESC");
+    $thoughts = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    echo json_encode($thoughts);
+    exit;
+}
+
+// --- Kategorien abrufen ---
+if ($action === 'getCategories') {
+    $stmt = $pdo->query("SELECT DISTINCT category FROM thoughts WHERE category IS NOT NULL ORDER BY category ASC");
+    $categories = $stmt->fetchAll(PDO::FETCH_COLUMN);
+    echo json_encode($categories);
     exit;
 }
 
@@ -110,13 +119,5 @@ if ($action === 'getThoughtsByCategory') {
     exit;
 }
 
-// --- Alle Gedanken abrufen (fürs initiale Laden) ---
-if ($action === 'getThoughts') {
-    $stmt = $pdo->query("SELECT * FROM thoughts ORDER BY created_at DESC");
-    $thoughts = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    echo json_encode($thoughts);
-    exit;
-}
-// Standardantwort
 echo json_encode(['error' => 'Unbekannte Aktion']);
 ?>
