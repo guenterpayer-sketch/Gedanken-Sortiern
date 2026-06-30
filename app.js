@@ -513,7 +513,8 @@ async function loadAllThoughts() {
         allThoughts = await response.json();
         renderThoughts();
         updateCategories();
-        checkDueReminders();
+        // TEMPORÄR deaktiviert zum Testen — nur noch manueller Button löst die Prüfung aus.
+        // checkDueReminders();
         syncQueue();
     } catch (error) {
         allThoughts = [];
@@ -525,6 +526,7 @@ async function loadAllThoughts() {
     }
 }
 
-setInterval(checkDueReminders, 60000);
+// TEMPORÄR deaktiviert zum Testen — nur noch manueller Button löst die Prüfung aus.
+// setInterval(checkDueReminders, 60000);
 
 document.addEventListener('DOMContentLoaded', loadAllThoughts);
