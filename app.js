@@ -15,6 +15,7 @@ const offlineBanner = document.getElementById('offlineBanner');
 const reminderBanner = document.getElementById('reminderBanner');
 const reminderBannerText = document.getElementById('reminderBannerText');
 const reminderBannerCloseBtn = document.getElementById('reminderBannerCloseBtn');
+const checkRemindersBtn = document.getElementById('checkRemindersBtn');
 const weeklySummaryBtn = document.getElementById('weeklySummaryBtn');
 const findPatternsBtn = document.getElementById('findPatternsBtn');
 const mistralInsight = document.getElementById('mistralInsight');
@@ -169,39 +170,37 @@ async function showReminderNotification(t) {
     }
 }
 
-async function checkDueReminders() {
-    if (!navigator.onLine) return;
+async function checkDueReminders(manualTest) {
+    if (!navigator.onLine) {
+        if (manualTest) window.alert('Du bist offline — Prüfung nicht möglich.');
+        return;
+    }
     try {
         const response = await fetch('api.php?action=getDueReminders');
+        if (!response.ok) throw new Error('HTTP ' + response.status);
         const due = await response.json();
-        if (!Array.isArray(due) || !due.length) return;
+        if (!Array.isArray(due)) throw new Error('Unerwartete Server-Antwort: ' + JSON.stringify(due).slice(0, 200));
 
-        // TEMPORÄR zum Testen deaktiviert: Push-/Notification-Versuch.
-        // for (const t of due) {
-        //     await showReminderNotification(t);
-        // }
+        if (!due.length) {
+            if (manualTest) window.alert('Prüfung erfolgreich gelaufen — aktuell keine fällige Erinnerung gefunden.');
+            return;
+        }
 
         const message = `🔔 Erinnerung: ${due.map(t => `„${t.text}"`).join(', ')}`;
         reminderBanner.hidden = false;
         reminderBanner.style.display = 'flex';
         reminderBannerText.textContent = message;
-
-        // Bestätigungs-Fallback: kann nicht vom Service-Worker-Cache
-        // unterdrückt werden, zeigt zuverlässig, dass die Prüfung lief.
-        try {
-            window.alert(message);
-        } catch (alertError) {
-            // alert() kann in installierten PWAs gesperrt sein, ignorieren
-        }
+        window.alert(message);
     } catch (e) {
-        // DEBUG: Fehler sichtbar machen statt lautlos zu schlucken
-        window.alert('DEBUG-Fehler in checkDueReminders: ' + (e && e.message ? e.message : e));
+        window.alert('Fehler bei der Erinnerungs-Prüfung: ' + (e && e.message ? e.message : e));
     }
 }
 
 reminderBannerCloseBtn.addEventListener('click', () => {
     reminderBanner.hidden = true;
 });
+
+checkRemindersBtn.addEventListener('click', () => checkDueReminders(true));
 
 if ('Notification' in window && Notification.permission === 'default') {
     Notification.requestPermission();
