@@ -158,6 +158,37 @@ h2 {
     font-size: 15px;
 }
 
+.thought-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.thought-actions button {
+    padding: 4px 10px;
+    font-size: 12px;
+    border: 1px solid #ddd;
+    background: white;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.thought-actions button:hover:not(:disabled) {
+    background-color: #f0f0f0;
+}
+
+.thought-actions .delete-btn:hover:not(:disabled) {
+    background-color: #fdecea;
+    border-color: #e74c3c;
+    color: #c0392b;
+}
+
+.thought-actions button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
 /* Priorität-Farben */
 .priority-high {
     border-left-color: #e74c3c;

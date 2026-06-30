@@ -104,6 +104,13 @@ thoughtInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') addThoughtBtn.click();
 });
 
+// --- HTML escapen (gegen XSS in Gedankentexten) ---
+function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str ?? '';
+    return div.innerHTML;
+}
+
 // --- Gedanken rendern ---
 function renderThoughts(category = null) {
     const filtered = category
@@ -114,16 +121,85 @@ function renderThoughts(category = null) {
 
     thoughtList.innerHTML = filtered.length
         ? filtered.map(t => `
-            <div class="thought ${priorityClass(t.priority)}">
+            <div class="thought ${priorityClass(t.priority)}" data-id="${t.id}">
                 <div class="thought-header">
-                    <span class="thought-category">${t.category || 'Unkategorisiert'}</span>
-                    <span class="thought-emotion">${getEmoji(t.emotion)} ${t.emotion || ''}</span>
-                    <span class="thought-priority">${t.priority || 'Mittel'}</span>
+                    <span class="thought-category">${escapeHtml(t.category) || 'Unkategorisiert'}</span>
+                    <span class="thought-emotion">${getEmoji(t.emotion)} ${escapeHtml(t.emotion) || ''}</span>
+                    <span class="thought-priority">${escapeHtml(t.priority) || 'Mittel'}</span>
                 </div>
-                <div class="thought-text">${t.text}</div>
+                <div class="thought-text" data-text="${escapeHtml(t.text)}">${escapeHtml(t.text)}</div>
+                <div class="thought-actions">
+                    <button class="edit-btn" data-id="${t.id}">✏️ Bearbeiten</button>
+                    <button class="delete-btn" data-id="${t.id}">🗑️ Löschen</button>
+                </div>
             </div>
         `).join('')
         : '<div class="thought">Keine Gedanken in dieser Kategorie.</div>';
+
+    attachThoughtActionListeners();
+}
+
+// --- Lösch- und Bearbeiten-Buttons verdrahten ---
+function attachThoughtActionListeners() {
+    document.querySelectorAll('.delete-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const id = btn.dataset.id;
+            if (!confirm('Diesen Gedanken wirklich löschen?')) return;
+
+            btn.disabled = true;
+            try {
+                const response = await fetch('/api.php?action=deleteThought', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id })
+                });
+                const data = await response.json();
+                if (data.error) {
+                    alert('Fehler: ' + data.error);
+                    btn.disabled = false;
+                    return;
+                }
+                allThoughts = allThoughts.filter(t => String(t.id) !== String(id));
+                renderThoughts(currentCategory);
+                updateCategories();
+            } catch (e) {
+                alert('Verbindungsfehler beim Löschen.');
+                btn.disabled = false;
+            }
+        });
+    });
+
+    document.querySelectorAll('.edit-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const id = btn.dataset.id;
+            const thought = allThoughts.find(t => String(t.id) === String(id));
+            if (!thought) return;
+
+            const newText = prompt('Gedanken bearbeiten:', thought.text);
+            if (newText === null || !newText.trim() || newText.trim() === thought.text) return;
+
+            btn.disabled = true;
+            try {
+                const response = await fetch('/api.php?action=updateThought', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id, text: newText.trim() })
+                });
+                const data = await response.json();
+                if (data.error) {
+                    alert('Fehler: ' + data.error);
+                    btn.disabled = false;
+                    return;
+                }
+                const idx = allThoughts.findIndex(t => String(t.id) === String(id));
+                allThoughts[idx] = data;
+                renderThoughts(currentCategory);
+            } catch (e) {
+                alert('Verbindungsfehler beim Bearbeiten.');
+                btn.disabled = false;
+            }
+        });
+    });
 }
 
 // --- Kategorien als Buttons anzeigen ---

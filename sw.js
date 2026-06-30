@@ -1,12 +1,12 @@
 // Service Worker für die PWA (gedanken.spass-am-tanzen.de)
-const CACHE_NAME = 'gedanken-pwa-v1';
+const CACHE_NAME = 'gedanken-pwa-v2';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
   '/style.css',
   '/app.js',
   '/manifest.json',
-  '/icons/icon-192x192.png'
+  '/icon-192x192.png'
 ];
 
 // Installation: Cache alle statischen Ressourcen

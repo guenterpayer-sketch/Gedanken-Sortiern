@@ -98,6 +98,45 @@ if ($action === 'getThoughts') {
     exit;
 }
 
+// --- Gedanken löschen ---
+if ($action === 'deleteThought' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    $input = json_decode(file_get_contents('php://input'), true);
+    $id = $input['id'] ?? null;
+
+    if (!$id) {
+        echo json_encode(['error' => 'Keine ID angegeben']);
+        exit;
+    }
+
+    $stmt = $pdo->prepare("DELETE FROM thoughts WHERE id = ?");
+    $stmt->execute([$id]);
+
+    echo json_encode(['success' => true, 'id' => $id]);
+    exit;
+}
+
+// --- Gedanken bearbeiten ---
+if ($action === 'updateThought' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    $input = json_decode(file_get_contents('php://input'), true);
+    $id = $input['id'] ?? null;
+    $text = $input['text'] ?? '';
+
+    if (!$id || !$text) {
+        echo json_encode(['error' => 'ID oder Text fehlt']);
+        exit;
+    }
+
+    $stmt = $pdo->prepare("UPDATE thoughts SET text = ? WHERE id = ?");
+    $stmt->execute([$text, $id]);
+
+    $stmt = $pdo->prepare("SELECT * FROM thoughts WHERE id = ?");
+    $stmt->execute([$id]);
+    $thought = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    echo json_encode($thought);
+    exit;
+}
+
 // --- Kategorien abrufen ---
 if ($action === 'getCategories') {
     $stmt = $pdo->query("SELECT DISTINCT category FROM thoughts WHERE category IS NOT NULL ORDER BY category ASC");
