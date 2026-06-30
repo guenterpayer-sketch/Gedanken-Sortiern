@@ -13,6 +13,8 @@ const categoryList = document.getElementById('categoryList');
 const darkModeBtn = document.getElementById('darkModeBtn');
 const offlineBanner = document.getElementById('offlineBanner');
 const reminderBanner = document.getElementById('reminderBanner');
+const reminderBannerText = document.getElementById('reminderBannerText');
+const reminderBannerCloseBtn = document.getElementById('reminderBannerCloseBtn');
 const weeklySummaryBtn = document.getElementById('weeklySummaryBtn');
 const findPatternsBtn = document.getElementById('findPatternsBtn');
 const mistralInsight = document.getElementById('mistralInsight');
@@ -179,12 +181,21 @@ async function checkDueReminders() {
         //     await showReminderNotification(t);
         // }
 
+        const message = `🔔 Erinnerung: ${due.map(t => `„${escapeHtml(t.text)}"`).join(', ')}`;
         reminderBanner.hidden = false;
-        reminderBanner.innerHTML = `🔔 Erinnerung: ${due.map(t => `„${escapeHtml(t.text)}"`).join(', ')}`;
+        reminderBannerText.textContent = `🔔 Erinnerung: ${due.map(t => `„${t.text}"`).join(', ')}`;
+
+        // Bestätigungs-Fallback: kann nicht vom Service-Worker-Cache
+        // unterdrückt werden, zeigt zuverlässig, dass die Prüfung lief.
+        window.alert(message);
     } catch (e) {
         // still silently
     }
 }
+
+reminderBannerCloseBtn.addEventListener('click', () => {
+    reminderBanner.hidden = true;
+});
 
 if ('Notification' in window && Notification.permission === 'default') {
     Notification.requestPermission();
