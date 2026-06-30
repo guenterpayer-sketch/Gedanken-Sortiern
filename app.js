@@ -148,6 +148,25 @@ window.addEventListener('offline', updateOfflineBanner);
 // =====================================================
 // Erinnerungen
 // =====================================================
+async function showReminderNotification(t) {
+    if (Notification.permission !== 'granted') return;
+    try {
+        // Auf vielen mobilen Browsern (z.B. Android Chrome) ist der
+        // Notification-Konstruktor in PWAs mit Service Worker gesperrt,
+        // dort muss stattdessen die ServiceWorkerRegistration genutzt werden.
+        if (navigator.serviceWorker) {
+            const registration = await navigator.serviceWorker.getRegistration();
+            if (registration) {
+                await registration.showNotification('Erinnerung an deinen Gedanken', { body: t.text });
+                return;
+            }
+        }
+        new Notification('Erinnerung an deinen Gedanken', { body: t.text });
+    } catch (e) {
+        // Notification fehlgeschlagen, Banner wird trotzdem angezeigt
+    }
+}
+
 async function checkDueReminders() {
     if (!navigator.onLine) return;
     try {
@@ -155,11 +174,9 @@ async function checkDueReminders() {
         const due = await response.json();
         if (!Array.isArray(due) || !due.length) return;
 
-        due.forEach(t => {
-            if (Notification.permission === 'granted') {
-                new Notification('Erinnerung an deinen Gedanken', { body: t.text });
-            }
-        });
+        for (const t of due) {
+            await showReminderNotification(t);
+        }
 
         reminderBanner.hidden = false;
         reminderBanner.innerHTML = `🔔 Erinnerung: ${due.map(t => `„${escapeHtml(t.text)}"`).join(', ')}`;
