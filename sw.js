@@ -1,22 +1,28 @@
 // Service Worker für die PWA (gedanken.spass-am-tanzen.de)
-const CACHE_NAME = 'gedanken-pwa-v2';
+const CACHE_NAME = 'gedanken-pwa-v3';
 const ASSETS_TO_CACHE = [
-  '/',
-  '/index.html',
-  '/style.css',
-  '/app.js',
-  '/manifest.json',
-  '/icon-192x192.png'
+  './',
+  './index.html',
+  './style.css',
+  './app.js',
+  './manifest.json',
+  './icon-192x192.png'
 ];
 
 // Installation: Cache alle statischen Ressourcen
+// Einzeln cachen statt addAll, damit ein einzelner 404 nicht die
+// komplette SW-Installation (und damit die PWA-Installierbarkeit) blockiert.
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then((cache) => {
-        return cache.addAll(ASSETS_TO_CACHE);
-      })
+    caches.open(CACHE_NAME).then((cache) => {
+      return Promise.all(
+        ASSETS_TO_CACHE.map((asset) =>
+          cache.add(asset).catch((err) => console.warn('Konnte nicht cachen:', asset, err))
+        )
+      );
+    })
   );
+  self.skipWaiting();
 });
 
 // Fetch: Cache-first-Strategie für statische Ressourcen

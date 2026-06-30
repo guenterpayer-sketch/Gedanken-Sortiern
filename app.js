@@ -74,7 +74,7 @@ addThoughtBtn.addEventListener('click', async () => {
     thoughtInput.disabled = true;
 
     try {
-        const response = await fetch('/api.php', {
+        const response = await fetch('api.php', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ text })
@@ -148,7 +148,7 @@ function attachThoughtActionListeners() {
 
             btn.disabled = true;
             try {
-                const response = await fetch('/api.php?action=deleteThought', {
+                const response = await fetch('api.php?action=deleteThought', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ id })
@@ -180,7 +180,7 @@ function attachThoughtActionListeners() {
 
             btn.disabled = true;
             try {
-                const response = await fetch('/api.php?action=updateThought', {
+                const response = await fetch('api.php?action=updateThought', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ id, text: newText.trim() })
@@ -204,7 +204,7 @@ function attachThoughtActionListeners() {
 
 // --- Kategorien als Buttons anzeigen ---
 async function updateCategories() {
-    const response = await fetch('/api.php?action=getCategories');
+    const response = await fetch('api.php?action=getCategories');
     const categories = await response.json();
 
     categoryList.innerHTML = `
@@ -228,7 +228,7 @@ async function updateCategories() {
 async function loadAllThoughts() {
     thoughtList.innerHTML = '<div class="thought">⏳ Lade Gedanken...</div>';
     try {
-        const response = await fetch('/api.php?action=getThoughts');
+        const response = await fetch('api.php?action=getThoughts');
         if (!response.ok) throw new Error('Fehler beim Laden');
         allThoughts = await response.json();
         renderThoughts();
