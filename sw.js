@@ -1,5 +1,5 @@
 // Service Worker für die PWA (gedanken.spass-am-tanzen.de)
-const CACHE_NAME = 'gedanken-pwa-v15';
+const CACHE_NAME = 'gedanken-pwa-v16';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
