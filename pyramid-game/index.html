@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Pyramiden-Labyrinth</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<canvas id="scene"></canvas>
+
+<div id="hud" class="hidden">
+  <div class="hud-top">
+    <div class="hud-stat">
+      <span class="hud-label">Zeit</span>
+      <div class="timebar"><div id="timeFill" class="timebar-fill"></div></div>
+      <span id="timeText" class="hud-value">--</span>
+    </div>
+    <div class="hud-stat hud-stat-moves">
+      <span class="hud-label">Züge</span>
+      <span id="moveText" class="hud-value">0</span>
+    </div>
+    <button id="restartBtn" class="btn btn-small">↻ Neu</button>
+  </div>
+  <div id="hint" class="hint"></div>
+</div>
+
+<div id="startScreen" class="overlay">
+  <div class="panel">
+    <h1>🔺 Pyramiden-Labyrinth</h1>
+    <p class="lead">Erklimme die vierseitige Pyramide, bevor die Zeit abläuft.</p>
+    <ul class="rules">
+      <li><strong>Ziehen</strong> mit der Maus / dem Finger dreht die Pyramide, damit du alle vier Seiten sehen kannst.</li>
+      <li><strong>Scrollen / Kneifen</strong> zoomt.</li>
+      <li>Leuchtende <strong>Pfade</strong> sind begehbar, alles andere ist Wand. An jeder Abzweigung erscheinen <strong>orangene Punkte</strong> für die möglichen nächsten Schritte – klicke oder tippe darauf.</li>
+      <li>Der Weg führt über alle vier Seiten. Manchmal musst du drehen, um die Fortsetzung zu finden – oder zurückgehen, wenn es eine Sackgasse ist.</li>
+      <li>Erreiche die goldene <strong>Spitze</strong>, bevor die Zeit abläuft!</li>
+    </ul>
+    <button id="startBtn" class="btn btn-primary">Spiel starten</button>
+  </div>
+</div>
+
+<div id="winScreen" class="overlay hidden">
+  <div class="panel">
+    <h1>🏆 Geschafft!</h1>
+    <p class="lead">Du hast die Spitze der Pyramide erreicht.</p>
+    <p id="winStats" class="stats"></p>
+    <button id="winRestartBtn" class="btn btn-primary">Nochmal spielen</button>
+  </div>
+</div>
+
+<div id="loseScreen" class="overlay hidden">
+  <div class="panel">
+    <h1>⏱️ Zeit abgelaufen</h1>
+    <p class="lead">Die Pyramide hat dich diesmal nicht an die Spitze gelassen.</p>
+    <p id="loseStats" class="stats"></p>
+    <button id="loseRestartBtn" class="btn btn-primary">Nochmal versuchen</button>
+  </div>
+</div>
+
+<div id="loadError" class="overlay hidden">
+  <div class="panel">
+    <h1>⚠️ 3D wird nicht unterstützt</h1>
+    <p class="lead">Dein Browser konnte WebGL nicht starten. Bitte einen aktuellen Browser (Chrome, Firefox, Edge, Safari) mit aktiviertem WebGL verwenden.</p>
+  </div>
+</div>
+
+<script src="vendor/three.min.js"></script>
+<script src="maze.js"></script>
+<script src="game.js"></script>
+</body>
+</html>
