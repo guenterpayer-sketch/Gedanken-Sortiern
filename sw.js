@@ -1,5 +1,5 @@
 // Service Worker für die PWA (gedanken.spass-am-tanzen.de)
-const CACHE_NAME = 'gedanken-pwa-v20';
+const CACHE_NAME = 'gedanken-pwa-v21';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
@@ -19,7 +19,9 @@ self.addEventListener('install', (event) => {
     caches.open(CACHE_NAME).then((cache) => {
       return Promise.all(
         ASSETS_TO_CACHE.map((asset) =>
-          cache.add(asset).catch((err) => console.warn('Konnte nicht cachen:', asset, err))
+          // cache: 'reload' = immer frisch vom Server holen, nie aus dem
+          // Browser-Zwischenspeicher (sonst landen alte Dateien im neuen Cache)
+          cache.add(new Request(asset, { cache: 'reload' })).catch((err) => console.warn('Konnte nicht cachen:', asset, err))
         )
       );
     })
