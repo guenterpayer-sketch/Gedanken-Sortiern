@@ -278,7 +278,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$action) {
 
     $a = analyzeThought($text);
 
-    $stmt = $pdo->prepare("INSERT INTO thoughts (text, category, priority, emotion, `type`, status) VALUES (?, ?, ?, ?, ?, ?)");
+    $stmt = $pdo->prepare("INSERT INTO thoughts (text, category, priority, emotion, `type`, status, created_at) VALUES (?, ?, ?, ?, ?, ?, NOW())");
     $stmt->execute([$text, $a['category'], $a['priority'], $a['emotion'], $a['type'], defaultStatus($a['type'])]);
 
     respond(fetchThought($pdo, $pdo->lastInsertId()));
