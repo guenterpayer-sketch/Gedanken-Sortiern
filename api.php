@@ -105,14 +105,40 @@ function clientIp() {
     return $_SERVER['REMOTE_ADDR'] ?? 'unbekannt';
 }
 
-function checkPassword($password) {
+// Passwort-Hash aus der Datenbank (beim ersten Öffnen in der App festgelegt)
+function storedPasswordHash(PDO $pdo) {
+    $stmt = $pdo->prepare("SELECT value FROM app_settings WHERE name = 'password_hash'");
+    $stmt->execute();
+    $hash = $stmt->fetchColumn();
+    return $hash ?: null;
+}
+
+// Passwort aus config.php (optional, hat Vorrang)
+function configPasswordSet() {
+    return (defined('LOGIN_PASSWORD_HASH') && LOGIN_PASSWORD_HASH !== '')
+        || (defined('LOGIN_PASSWORD') && LOGIN_PASSWORD !== '');
+}
+
+function passwordIsSet(PDO $pdo) {
+    return configPasswordSet() || storedPasswordHash($pdo) !== null;
+}
+
+function checkPassword(PDO $pdo, $password) {
     if (defined('LOGIN_PASSWORD_HASH') && LOGIN_PASSWORD_HASH !== '') {
         return password_verify($password, LOGIN_PASSWORD_HASH);
     }
     if (defined('LOGIN_PASSWORD') && LOGIN_PASSWORD !== '') {
         return hash_equals(LOGIN_PASSWORD, $password);
     }
-    return false;
+    $hash = storedPasswordHash($pdo);
+    return $hash !== null && password_verify($password, $hash);
+}
+
+function createSession(PDO $pdo) {
+    $token = bin2hex(random_bytes(32));
+    $stmt = $pdo->prepare("INSERT INTO sessions (token_hash, last_used_at, expires_at) VALUES (?, NOW(), NOW() + INTERVAL " . SESSION_LIFETIME_DAYS . " DAY)");
+    $stmt->execute([hash('sha256', $token)]);
+    setSessionCookie($token, time() + SESSION_LIFETIME_DAYS * 86400);
 }
 
 function isAuthenticated(PDO $pdo) {
@@ -134,10 +160,31 @@ function isAuthenticated(PDO $pdo) {
     return true;
 }
 
+// --- Ist schon ein Passwort festgelegt? (für die Login-Seite) ---
+if ($action === 'needsSetup') {
+    respond(['needsSetup' => !passwordIsSet($pdo)]);
+}
+
+// --- Passwort beim ersten Öffnen festlegen (nur solange keines existiert) ---
+if ($action === 'setupPassword' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (passwordIsSet($pdo)) {
+        respond(['error' => 'Es ist bereits ein Passwort festgelegt.'], 403);
+    }
+    $input = jsonInput();
+    $password = (string)($input['password'] ?? '');
+    if (mb_strlen($password) < 8) {
+        respond(['error' => 'Das Passwort muss mindestens 8 Zeichen lang sein.'], 400);
+    }
+    $stmt = $pdo->prepare("INSERT INTO app_settings (name, value) VALUES ('password_hash', ?)");
+    $stmt->execute([password_hash($password, PASSWORD_DEFAULT)]);
+    createSession($pdo);
+    respond(['success' => true]);
+}
+
 // --- Login ---
 if ($action === 'login' && $_SERVER['REQUEST_METHOD'] === 'POST') {
-    if (!(defined('LOGIN_PASSWORD_HASH') && LOGIN_PASSWORD_HASH !== '') && !(defined('LOGIN_PASSWORD') && LOGIN_PASSWORD !== '')) {
-        respond(['error' => 'In config.php ist kein Passwort hinterlegt.'], 500);
+    if (!passwordIsSet($pdo)) {
+        respond(['error' => 'Es ist noch kein Passwort festgelegt.', 'needsSetup' => true], 400);
     }
 
     $ip = clientIp();
@@ -148,18 +195,13 @@ if ($action === 'login' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     $input = jsonInput();
-    if (!checkPassword((string)($input['password'] ?? ''))) {
+    if (!checkPassword($pdo, (string)($input['password'] ?? ''))) {
         $pdo->prepare("INSERT INTO login_attempts (ip) VALUES (?)")->execute([$ip]);
         respond(['error' => 'Falsches Passwort.'], 401);
     }
 
     $pdo->prepare("DELETE FROM login_attempts WHERE ip = ? OR attempted_at < NOW() - INTERVAL 1 DAY")->execute([$ip]);
-
-    $token = bin2hex(random_bytes(32));
-    $stmt = $pdo->prepare("INSERT INTO sessions (token_hash, last_used_at, expires_at) VALUES (?, NOW(), NOW() + INTERVAL " . SESSION_LIFETIME_DAYS . " DAY)");
-    $stmt->execute([hash('sha256', $token)]);
-    setSessionCookie($token, time() + SESSION_LIFETIME_DAYS * 86400);
-
+    createSession($pdo);
     respond(['success' => true]);
 }
 

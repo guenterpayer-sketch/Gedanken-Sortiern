@@ -10,11 +10,12 @@
 <body>
     <div class="container login-container">
         <div class="top-bar">
-            <h1>Anmelden</h1>
+            <h1 id="loginTitle">Anmelden</h1>
         </div>
-        <p class="login-hint">Einmal pro Gerät anmelden – danach bleibst du angemeldet.</p>
+        <p class="login-hint" id="loginHint">Einmal pro Gerät anmelden – danach bleibst du angemeldet.</p>
         <form id="loginForm" class="home-input-area">
             <input type="password" id="passwordInput" placeholder="Passwort" autocomplete="current-password" required>
+            <input type="password" id="passwordRepeat" placeholder="Passwort wiederholen" autocomplete="new-password" hidden>
             <button type="submit" id="loginBtn">Anmelden</button>
         </form>
         <div id="loginStatus" class="add-status" hidden></div>
@@ -24,16 +25,47 @@
 
         const form = document.getElementById('loginForm');
         const input = document.getElementById('passwordInput');
+        const repeat = document.getElementById('passwordRepeat');
         const btn = document.getElementById('loginBtn');
         const status = document.getElementById('loginStatus');
+        let setupMode = false;
+
+        function showStatus(text) {
+            status.textContent = text;
+            status.hidden = false;
+        }
+
+        // Erster Start: noch kein Passwort -> Passwort festlegen
+        function enableSetupMode() {
+            setupMode = true;
+            document.getElementById('loginTitle').textContent = 'Passwort festlegen';
+            document.getElementById('loginHint').textContent =
+                'Erster Start: Lege jetzt dein Passwort fest (mind. 8 Zeichen). Du brauchst es später nur einmal pro Gerät.';
+            input.placeholder = 'Neues Passwort';
+            input.autocomplete = 'new-password';
+            repeat.hidden = false;
+            repeat.required = true;
+            btn.textContent = 'Passwort speichern';
+        }
+
+        fetch('api.php?action=needsSetup')
+            .then(r => r.json())
+            .then(d => { if (d.needsSetup) enableSetupMode(); })
+            .catch(() => {});
         input.focus();
 
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
-            btn.disabled = true;
             status.hidden = true;
+
+            if (setupMode) {
+                if (input.value.length < 8) return showStatus('Bitte mindestens 8 Zeichen.');
+                if (input.value !== repeat.value) return showStatus('Die beiden Passwörter stimmen nicht überein.');
+            }
+
+            btn.disabled = true;
             try {
-                const response = await fetch('api.php?action=login', {
+                const response = await fetch('api.php?action=' + (setupMode ? 'setupPassword' : 'login'), {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ password: input.value })
@@ -43,11 +75,11 @@
                     window.location.replace('index.html');
                     return;
                 }
-                status.textContent = data.error || 'Anmeldung fehlgeschlagen.';
+                if (data.needsSetup) enableSetupMode();
+                showStatus(data.error || 'Anmeldung fehlgeschlagen.');
             } catch (err) {
-                status.textContent = 'Verbindungsfehler. Bist du online?';
+                showStatus('Verbindungsfehler. Bist du online?');
             }
-            status.hidden = false;
             btn.disabled = false;
             input.select();
         });

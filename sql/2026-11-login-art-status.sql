@@ -29,3 +29,9 @@ CREATE TABLE IF NOT EXISTS login_attempts (
 
 -- Hinweis: Die alte Tabelle "categories" wird nicht mehr benutzt.
 -- Sie kann bleiben oder später mit  DROP TABLE categories;  gelöscht werden.
+
+-- 5) App-Einstellungen (Passwort wird beim ersten Öffnen der App festgelegt)
+CREATE TABLE IF NOT EXISTS app_settings (
+    name VARCHAR(50) PRIMARY KEY,
+    value TEXT NOT NULL
+);
