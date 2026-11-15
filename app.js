@@ -1,6 +1,7 @@
 // --- Globale Variablen ---
 let allThoughts = [];
 let currentCategory = null;
+let meta = { types: [], categories: [], statuses: {} };
 const QUEUE_KEY = 'gedanken_offline_queue';
 
 // --- DOM-Elemente (je nach Seite ist nicht jedes Element vorhanden) ---
@@ -16,6 +17,9 @@ const offlineBanner = document.getElementById('offlineBanner');
 const weeklySummaryBtn = document.getElementById('weeklySummaryBtn');
 const findPatternsBtn = document.getElementById('findPatternsBtn');
 const mistralInsight = document.getElementById('mistralInsight');
+const detailOverlay = document.getElementById('detailOverlay');
+const detailPanel = document.getElementById('detailPanel');
+const logoutAllBtn = document.getElementById('logoutAllBtn');
 
 // --- Emotion: Emoji-Mapping ---
 const emotionEmoji = {
@@ -36,6 +40,9 @@ function getEmoji(emotion) {
     return emotionEmoji[key] || '💭';
 }
 
+// --- Gedankenart: Symbol ---
+const typeIcon = { 'Aufgabe': '✅', 'Idee': '💡', 'Grübelei': '🌀', 'Notiz': '📝' };
+
 // --- Priorität: CSS-Klasse ---
 function priorityClass(priority) {
     if (!priority) return '';
@@ -50,6 +57,49 @@ function escapeHtml(str) {
     const div = document.createElement('div');
     div.textContent = str ?? '';
     return div.innerHTML;
+}
+
+// --- MySQL-Datum ("2026-11-15 14:32:00") lesbar machen ---
+function parseDate(str) {
+    return str ? new Date(String(str).replace(' ', 'T')) : null;
+}
+
+function formatDate(str, withTime = true) {
+    const d = parseDate(str);
+    if (!d || isNaN(d)) return '';
+    const opts = { day: '2-digit', month: '2-digit', year: 'numeric' };
+    if (withTime) Object.assign(opts, { hour: '2-digit', minute: '2-digit' });
+    return d.toLocaleString('de-DE', opts);
+}
+
+// =====================================================
+// API-Aufrufe mit Login-Prüfung
+// =====================================================
+class AuthError extends Error {}
+
+function goToLogin() {
+    if (!location.pathname.endsWith('login.html')) {
+        window.location.replace('login.html');
+    }
+}
+
+// Wirft AuthError bei 401 (und leitet zur Anmeldung weiter),
+// sonst normaler Fehler bei Netzwerkproblemen.
+async function apiFetch(url, options = {}) {
+    const response = await fetch(url, { credentials: 'same-origin', ...options });
+    if (response.status === 401) {
+        goToLogin();
+        throw new AuthError('Nicht angemeldet');
+    }
+    return response.json();
+}
+
+function apiPost(url, body) {
+    return apiFetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+    });
 }
 
 // =====================================================
@@ -102,7 +152,7 @@ function renderQueuedThoughts() {
         div.className = 'thought pending';
         div.innerHTML = `
             <div class="thought-header">
-                <span class="thought-category">⏳ Wartet auf Verbindung...</span>
+                <span class="thought-category">⏳ Wartet auf Versand...</span>
             </div>
             <div class="thought-text">${escapeHtml(item.text)}</div>
         `;
@@ -118,23 +168,17 @@ async function syncQueue() {
     while (remaining.length) {
         const item = remaining[0];
         try {
-            const response = await fetch('api.php', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ text: item.text })
-            });
-            const data = await response.json();
+            const data = await apiPost('api.php', { text: item.text });
             if (data.error) throw new Error(data.error);
 
             allThoughts.unshift(data);
             remaining.shift();
             saveQueue(remaining);
         } catch (e) {
-            break; // Noch offline oder Serverfehler — Rest bleibt in der Warteschlange
+            break; // Offline, nicht angemeldet oder Serverfehler — Rest bleibt in der Warteschlange
         }
     }
     renderThoughts(currentCategory);
-    renderQueuedThoughts();
     updateCategories();
 }
 
@@ -188,12 +232,7 @@ async function submitThought(text) {
         return { queued: true };
     }
     try {
-        const response = await fetch('api.php', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text })
-        });
-        const data = await response.json();
+        const data = await apiPost('api.php', { text });
         if (data.error) return { error: data.error };
 
         allThoughts.unshift(data);
@@ -201,9 +240,9 @@ async function submitThought(text) {
         updateCategories();
         return { success: true };
     } catch (e) {
-        // Netzwerk eigentlich da, aber Request schlug fehl -> in Warteschlange
+        // Nicht angemeldet oder Request schlug fehl -> Gedanke bleibt in der Warteschlange
         queueThought(text);
-        return { queued: true };
+        return { queued: true, auth: e instanceof AuthError };
     }
 }
 
@@ -228,7 +267,8 @@ if (thoughtForm) {
         const result = await submitThought(text);
         isSubmittingThought = false;
 
-        thoughtInput.value = '';
+        // Bei einem Serverfehler bleibt der Text im Feld, damit nichts verloren geht
+        if (!result.error) thoughtInput.value = '';
         thoughtInput.disabled = false;
         thoughtInput.focus();
         if (addThoughtBtn) {
@@ -239,9 +279,11 @@ if (thoughtForm) {
         if (addStatus) {
             addStatus.textContent = result.error
                 ? ('Fehler: ' + result.error)
-                : result.queued
-                    ? '⏳ Gespeichert — wird gesendet, sobald wieder online.'
-                    : '✅ Gedanke gespeichert & sortiert.';
+                : result.auth
+                    ? '🔒 Nicht angemeldet — Gedanke ist zwischengespeichert.'
+                    : result.queued
+                        ? '⏳ Gespeichert — wird gesendet, sobald wieder online.'
+                        : '✅ Gedanke gespeichert & sortiert.';
             addStatus.hidden = false;
             clearTimeout(addStatus._timer);
             addStatus._timer = setTimeout(() => { addStatus.hidden = true; }, 3000);
@@ -259,8 +301,7 @@ async function runMistralInsight(action, button, loadingLabel, originalLabel) {
     mistralInsight.textContent = '⏳ Mistral denkt nach...';
 
     try {
-        const response = await fetch(`api.php?action=${action}`);
-        const data = await response.json();
+        const data = await apiFetch(`api.php?action=${action}`);
         mistralInsight.textContent = data.summary || data.patterns || data.error || 'Keine Antwort erhalten.';
     } catch (e) {
         mistralInsight.textContent = 'Verbindungsfehler. Bitte erneut versuchen.';
@@ -283,105 +324,244 @@ if (findPatternsBtn) {
 }
 
 // =====================================================
-// Gedanken rendern
+// Gedanken-Liste
 // =====================================================
+function isDone(t) {
+    return t.status === 'erledigt' || t.status === 'umgesetzt' || t.status === 'verworfen';
+}
+
 function renderThoughts(category = null) {
     if (!thoughtList) return;
     const filtered = category
         ? allThoughts.filter(t => t.category === category)
         : allThoughts;
 
-    filtered.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    filtered.sort((a, b) => parseDate(b.created_at) - parseDate(a.created_at));
 
     thoughtList.innerHTML = filtered.length
         ? filtered.map(t => `
-            <div class="thought ${priorityClass(t.priority)}" data-id="${t.id}">
+            <div class="thought ${priorityClass(t.priority)} ${isDone(t) ? 'done' : ''}" data-id="${t.id}" role="button" tabindex="0">
                 <div class="thought-header">
-                    <span class="thought-category">${escapeHtml(t.category) || 'Unkategorisiert'}</span>
-                    <span class="thought-emotion">${getEmoji(t.emotion)} ${escapeHtml(t.emotion) || ''}</span>
+                    <span class="thought-type">${typeIcon[t.type] || '📝'} ${escapeHtml(t.type || 'Notiz')}</span>
+                    ${t.status ? `<span class="thought-status">${escapeHtml(t.status)}</span>` : ''}
+                    <span class="thought-category">${escapeHtml(t.category) || 'Sonstiges'}</span>
                     <span class="thought-priority">${escapeHtml(t.priority) || 'Mittel'}</span>
                 </div>
                 <div class="thought-text">${escapeHtml(t.text)}</div>
-                <div class="thought-actions">
-                    <button class="edit-btn" data-id="${t.id}">✏️ Bearbeiten</button>
-                    <button class="delete-btn" data-id="${t.id}">🗑️ Löschen</button>
-                </div>
+                <div class="thought-meta">${formatDate(t.created_at)} · ${getEmoji(t.emotion)} ${escapeHtml(t.emotion) || ''}</div>
             </div>
         `).join('')
         : '<div class="thought">Keine Gedanken in dieser Kategorie.</div>';
 
-    attachThoughtActionListeners();
+    thoughtList.querySelectorAll('.thought[data-id]').forEach(el => {
+        el.addEventListener('click', () => openDetail(el.dataset.id));
+        el.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') openDetail(el.dataset.id);
+        });
+    });
     renderQueuedThoughts();
 }
 
-// --- Lösch- und Bearbeiten-Buttons verdrahten ---
-function attachThoughtActionListeners() {
-    document.querySelectorAll('.delete-btn').forEach(btn => {
-        btn.addEventListener('click', async () => {
-            const id = btn.dataset.id;
-            if (!confirm('Diesen Gedanken wirklich löschen?')) return;
+// =====================================================
+// Detailansicht
+// =====================================================
+function optionsHtml(list, selected) {
+    return list.map(v => `<option value="${escapeHtml(v)}" ${v === selected ? 'selected' : ''}>${escapeHtml(v)}</option>`).join('');
+}
 
-            btn.disabled = true;
-            try {
-                const response = await fetch('api.php?action=deleteThought', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ id })
-                });
-                const data = await response.json();
-                if (data.error) {
-                    alert('Fehler: ' + data.error);
-                    btn.disabled = false;
-                    return;
-                }
-                allThoughts = allThoughts.filter(t => String(t.id) !== String(id));
-                renderThoughts(currentCategory);
-                updateCategories();
-            } catch (e) {
-                alert('Verbindungsfehler beim Löschen.');
-                btn.disabled = false;
-            }
-        });
+function statusFieldHtml(type, status) {
+    const list = meta.statuses[type];
+    if (!list) return '';
+    return `
+        <label class="detail-field">Status
+            <select id="detailStatus">${optionsHtml(list, status || list[0])}</select>
+        </label>`;
+}
+
+function openDetail(id) {
+    const t = allThoughts.find(x => String(x.id) === String(id));
+    if (!t || !detailOverlay) return;
+
+    detailPanel.innerHTML = `
+        <div class="detail-top">
+            <h2>${typeIcon[t.type] || '📝'} Gedanke</h2>
+            <button type="button" class="detail-close" id="detailClose" title="Schließen">✕</button>
+        </div>
+        <div class="detail-info">
+            ${formatDate(t.created_at)} · ${getEmoji(t.emotion)} ${escapeHtml(t.emotion) || ''} · Priorität: ${escapeHtml(t.priority) || 'Mittel'}
+        </div>
+        <label class="detail-field">Text
+            <textarea id="detailText" rows="4">${escapeHtml(t.text)}</textarea>
+        </label>
+        <label class="detail-field">Art
+            <select id="detailType">${optionsHtml(meta.types, t.type)}</select>
+        </label>
+        <div id="detailStatusWrap">${statusFieldHtml(t.type, t.status)}</div>
+        <label class="detail-field">Kategorie
+            <select id="detailCategory">${optionsHtml(meta.categories, t.category)}</select>
+        </label>
+        <div class="detail-actions">
+            <button type="button" id="detailSave" class="primary">💾 Speichern</button>
+            <button type="button" id="detailDelete" class="danger">🗑️ Löschen</button>
+        </div>
+        <div class="detail-export">
+            <span>Exportieren:</span>
+            <button type="button" id="exportMd">Markdown</button>
+            <button type="button" id="exportJson">JSON</button>
+        </div>
+        <div id="detailMsg" class="add-status" hidden></div>
+    `;
+
+    const typeSelect = document.getElementById('detailType');
+    typeSelect.addEventListener('change', () => {
+        document.getElementById('detailStatusWrap').innerHTML = statusFieldHtml(typeSelect.value, null);
     });
 
-    document.querySelectorAll('.edit-btn').forEach(btn => {
-        btn.addEventListener('click', async () => {
-            const id = btn.dataset.id;
-            const thought = allThoughts.find(t => String(t.id) === String(id));
-            if (!thought) return;
+    document.getElementById('detailClose').addEventListener('click', closeDetail);
+    document.getElementById('detailSave').addEventListener('click', () => saveDetail(t.id));
+    document.getElementById('detailDelete').addEventListener('click', () => deleteThought(t.id));
+    document.getElementById('exportMd').addEventListener('click', () => exportThought(t.id, 'md'));
+    document.getElementById('exportJson').addEventListener('click', () => exportThought(t.id, 'json'));
 
-            const newText = prompt('Gedanken bearbeiten:', thought.text);
-            if (newText === null || !newText.trim() || newText.trim() === thought.text) return;
+    detailOverlay.hidden = false;
+    document.body.classList.add('no-scroll');
+}
 
-            btn.disabled = true;
-            try {
-                const response = await fetch('api.php?action=updateThought', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ id, text: newText.trim() })
-                });
-                const data = await response.json();
-                if (data.error) {
-                    alert('Fehler: ' + data.error);
-                    btn.disabled = false;
-                    return;
-                }
-                const idx = allThoughts.findIndex(t => String(t.id) === String(id));
-                allThoughts[idx] = data;
-                renderThoughts(currentCategory);
-            } catch (e) {
-                alert('Verbindungsfehler beim Bearbeiten.');
-                btn.disabled = false;
-            }
-        });
+function closeDetail() {
+    if (!detailOverlay) return;
+    detailOverlay.hidden = true;
+    detailPanel.innerHTML = '';
+    document.body.classList.remove('no-scroll');
+}
+
+if (detailOverlay) {
+    detailOverlay.addEventListener('click', (e) => {
+        if (e.target === detailOverlay) closeDetail();
+    });
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && !detailOverlay.hidden) closeDetail();
     });
 }
 
-// --- Kategorien als Buttons anzeigen ---
+function showDetailMsg(text) {
+    const msg = document.getElementById('detailMsg');
+    if (!msg) return;
+    msg.textContent = text;
+    msg.hidden = false;
+}
+
+async function saveDetail(id) {
+    const text = document.getElementById('detailText').value.trim();
+    if (!text) {
+        showDetailMsg('Der Text darf nicht leer sein.');
+        return;
+    }
+    const statusSelect = document.getElementById('detailStatus');
+    const body = {
+        id,
+        text,
+        type: document.getElementById('detailType').value,
+        category: document.getElementById('detailCategory').value,
+        status: statusSelect ? statusSelect.value : null,
+    };
+
+    const btn = document.getElementById('detailSave');
+    btn.disabled = true;
+    try {
+        const data = await apiPost('api.php?action=updateThought', body);
+        if (data.error) {
+            showDetailMsg('Fehler: ' + data.error);
+            btn.disabled = false;
+            return;
+        }
+        const idx = allThoughts.findIndex(t => String(t.id) === String(id));
+        allThoughts[idx] = data;
+        renderThoughts(currentCategory);
+        updateCategories();
+        closeDetail();
+    } catch (e) {
+        showDetailMsg('Verbindungsfehler beim Speichern.');
+        btn.disabled = false;
+    }
+}
+
+async function deleteThought(id) {
+    if (!confirm('Diesen Gedanken wirklich löschen?')) return;
+    const btn = document.getElementById('detailDelete');
+    btn.disabled = true;
+    try {
+        const data = await apiPost('api.php?action=deleteThought', { id });
+        if (data.error) {
+            showDetailMsg('Fehler: ' + data.error);
+            btn.disabled = false;
+            return;
+        }
+        allThoughts = allThoughts.filter(t => String(t.id) !== String(id));
+        renderThoughts(currentCategory);
+        updateCategories();
+        closeDetail();
+    } catch (e) {
+        showDetailMsg('Verbindungsfehler beim Löschen.');
+        btn.disabled = false;
+    }
+}
+
+// --- Export eines einzelnen Gedankens (Datum, Art, Kategorie, Status, Text) ---
+function exportThought(id, format) {
+    const t = allThoughts.find(x => String(x.id) === String(id));
+    if (!t) return;
+
+    const datePart = (t.created_at || '').slice(0, 10) || 'ohne-datum';
+    let content, mime, ext;
+
+    if (format === 'json') {
+        content = JSON.stringify({
+            datum: t.created_at,
+            art: t.type,
+            kategorie: t.category,
+            status: t.status || null,
+            text: t.text,
+        }, null, 2);
+        mime = 'application/json';
+        ext = 'json';
+    } else {
+        const lines = [
+            `# Gedanke vom ${formatDate(t.created_at, false)}`,
+            '',
+            `- **Datum:** ${formatDate(t.created_at)}`,
+            `- **Art:** ${t.type || 'Notiz'}`,
+            `- **Kategorie:** ${t.category || 'Sonstiges'}`,
+        ];
+        if (t.status) lines.push(`- **Status:** ${t.status}`);
+        lines.push('', t.text, '');
+        content = lines.join('\n');
+        mime = 'text/markdown';
+        ext = 'md';
+    }
+
+    const blob = new Blob([content], { type: mime + ';charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `gedanke-${t.id}-${datePart}.${ext}`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+// =====================================================
+// Kategorien als Filter-Buttons
+// =====================================================
 async function updateCategories() {
     if (!categoryList) return;
-    const response = await fetch('api.php?action=getCategories');
-    const categories = await response.json();
+    let categories;
+    try {
+        categories = await apiFetch('api.php?action=getCategories');
+    } catch (e) {
+        return;
+    }
+    if (!Array.isArray(categories)) return;
 
     categoryList.innerHTML = `
         <button class="category-btn ${!currentCategory ? 'active' : ''}" data-category="">Alle</button>
@@ -400,17 +580,34 @@ async function updateCategories() {
     });
 }
 
-// --- Seite initialisieren ---
+// =====================================================
+// Alle Geräte abmelden
+// =====================================================
+if (logoutAllBtn) {
+    logoutAllBtn.addEventListener('click', async () => {
+        if (!confirm('Alle Geräte abmelden? Du musst dich danach überall neu anmelden – auch hier.')) return;
+        try {
+            await apiPost('api.php?action=logoutAll', {});
+        } catch (e) { /* Weiterleitung passiert ohnehin */ }
+        goToLogin();
+    });
+}
+
+// =====================================================
+// Seite initialisieren
+// =====================================================
 async function loadAllThoughts() {
     thoughtList.innerHTML = '<div class="thought">⏳ Lade Gedanken...</div>';
     try {
-        const response = await fetch('api.php?action=getThoughts');
-        if (!response.ok) throw new Error('Fehler beim Laden');
-        allThoughts = await response.json();
+        meta = await apiFetch('api.php?action=getMeta');
+        const data = await apiFetch('api.php?action=getThoughts');
+        if (!Array.isArray(data)) throw new Error(data.error || 'Fehler beim Laden');
+        allThoughts = data;
         renderThoughts();
         updateCategories();
         syncQueue();
     } catch (error) {
+        if (error instanceof AuthError) return;
         allThoughts = [];
         thoughtList.innerHTML = '';
         renderQueuedThoughts();
@@ -420,12 +617,22 @@ async function loadAllThoughts() {
     }
 }
 
+async function checkAuthAndSync() {
+    if (!navigator.onLine) return;
+    try {
+        await apiFetch('api.php?action=checkAuth');
+        syncQueue();
+    } catch (e) {
+        // AuthError leitet bereits weiter; Netzwerkfehler ignorieren (Offline-Betrieb)
+    }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     updateOfflineBanner();
     if (thoughtList) {
         loadAllThoughts();
     } else {
-        syncQueue();
+        checkAuthAndSync();
     }
     if (thoughtInput) thoughtInput.focus();
 });

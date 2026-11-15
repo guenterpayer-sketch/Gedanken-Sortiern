@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Anmelden — Gedanken-Sortierer</title>
+    <link rel="manifest" href="manifest.json">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container login-container">
+        <div class="top-bar">
+            <h1>Anmelden</h1>
+        </div>
+        <p class="login-hint">Einmal pro Gerät anmelden – danach bleibst du angemeldet.</p>
+        <form id="loginForm" class="home-input-area">
+            <input type="password" id="passwordInput" placeholder="Passwort" autocomplete="current-password" required>
+            <button type="submit" id="loginBtn">Anmelden</button>
+        </form>
+        <div id="loginStatus" class="add-status" hidden></div>
+    </div>
+    <script>
+        if (localStorage.getItem('darkMode') === '1') document.body.classList.add('dark-mode');
+
+        const form = document.getElementById('loginForm');
+        const input = document.getElementById('passwordInput');
+        const btn = document.getElementById('loginBtn');
+        const status = document.getElementById('loginStatus');
+        input.focus();
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            btn.disabled = true;
+            status.hidden = true;
+            try {
+                const response = await fetch('api.php?action=login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password: input.value })
+                });
+                const data = await response.json();
+                if (data.success) {
+                    window.location.replace('index.html');
+                    return;
+                }
+                status.textContent = data.error || 'Anmeldung fehlgeschlagen.';
+            } catch (err) {
+                status.textContent = 'Verbindungsfehler. Bist du online?';
+            }
+            status.hidden = false;
+            btn.disabled = false;
+            input.select();
+        });
+    </script>
+</body>
+</html>
